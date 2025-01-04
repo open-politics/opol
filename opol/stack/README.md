@@ -11,9 +11,9 @@ If something is unclear, missing documentation, or unnecessarily hard to get int
 - Directory Structure
 - Environment Configuration
 - Service Orchestration
-  - Docker Files
-  - Core Services
-  - Flow Services
+  - Docker Compose Files
+  - Services
+  - Flows
 - Flow Orchestration
   - List of Flows & Pipelines
 - Service Configuration
@@ -23,6 +23,7 @@ If something is unclear, missing documentation, or unnecessarily hard to get int
 - Resources
 
 ## Overview
+![Stack with Flows Architecture](../../.github/media/stackwithflowarchitecture.png)
 The `opol/opol/stack` directory is the heart of the application, responsible for orchestrating various microservices and workflows essential for the system's functionality. This folder is ready to use with docker compose for local development.
 
 *In it's advanced form it is deployed as a kubnetes cluster deployed with helm. For more information look into [here](../../.deployment)*
@@ -35,11 +36,13 @@ The `opol/opol/stack` directory is the heart of the application, responsible for
 | **.store**             | Store for scraped data, geocoding data, and redis queue storage              |
 | **compose.local.yml**   | Compose File using a local Prefect server                                    |
 | **compose.yml**         | Development Compose File                                                    |
-| **flows.compose.yml**   | Compose File for flows                                                     |
-| **prefect.yaml**        | Prefect Configuration File                                                |
 | **core**                | Service package, holding pydantic models, URL mappings, database connections |
 | **flows**               | Batch processing flows: scraping, geocoding, entities, classification, embeddings |
 | **services**            | Services, mostly used for live requests: scraping, geocoding, embeddings .. + a dashboard |
+| **prefect.yaml**        | Prefect Flow File for local docker work pool                                |
+| **prefect-k8s.yaml**   | Prefect Flow File for Kubernetes work pool                                       |
+| **register-k8sflows.sh** | Script to register flows to Kubernetes work pool |
+| **register-flows.sh**     | Script to register flows to local docker work pool | 
 
 ## Environment Configuration
 Environment variables are managed through the `.env` file, which is essential for configuring service parameters like API keys, database credentials, and service ports. The `.env.example` file serves as a template, outlining the required variables without exposing sensitive information. Ensure you populate the `.env` file with the necessary configurations before deploying the stack.
@@ -51,18 +54,19 @@ mv opol/stack/.env.example opol/stack/.env
 ## Service Orchestration
 
 ### Docker Compose Files
-The stack utilizes Docker Compose to manage and orchestrate multiple services seamlessly.
-- `compose.yml`: Defines the production-ready services, configurations, and dependencies.
-- `compose.local.yml`: Environment-specific compose file for local development.
-- `flows.compose.yml`: Compose File for flows 
+The docker compose stack boots up all the services, engines and databases need for opol.
+The non-local compose file works with prefect cloud. This orchestrates the api conections and the workpools.
+- `compose.yml`: local stack
+- `compose.local.yml`: local stack with a local prefect server
 
 # Flows
-If you boot up the stack, the prefect worker will start up and create a workpool. With the deploy-flows.sh:
+If you boot up the stack, the prefect worker will start up and create a workpool "docker-pool". \
+Register the flows with the deploy-flows.sh:
 ```bash
 bash deploy-flows.sh
 ```
-You can deploy, i.e. register the flow. If the cron scedule in the prefect.yaml is hit the flow run. It can also be triggered via cli. Which is e.g. what the core-app does to trigger the flows. The max-concurrent setting limits the number of concurrent runs.
-Some flows have specific dependencies, all of this is managed in the flows. The lightweight flows use the worker-base image.
+This registers/ deploys the flows. Once they are registered the worker in the docker stack will look for jobs in that pool, like a pub/sub topic. When the worker recieves a new job, it will start a container with the image specified in the flow and execute the flow according the the entrypoint.
+Except for the entities flow most flows share a lot of dependencies. That is why the base-worker image is used for most of the flows.
 
 For local development the flows.compose.yml is used:
 ```bash
@@ -72,6 +76,14 @@ docker compose -f flows.compose.yml up flow-embeddings --build
 You can use your docker images or start building your own and adding your flow code definitions in the flows folder.
 Invoke them in the prefect.yaml. 
 Make sure that how the file is mounted in the docker container e.g. "flows/classification/classification_flow.py" is identical to from where locally the prefect.yaml is executed/ deployed from (run bash deploy-flows.sh from opol/stack).
+
+
+#### Note on development
+If you want to develop on flows you have to do a few things:
+1. Set up your own prefect cloud account or spin up a local server
+2. Build and push the images you need to use for the flows.
+3. Start a work pool in prefect cloud or locally.
+4. Register the flows with the register-flows.sh script. (Make sure that the first part of the entrypoint path exist relative from the prefect.yaml file - this means you flow code needs to be in this repo under flows/ somewhere.)
 
 
 
