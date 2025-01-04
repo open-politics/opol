@@ -4,11 +4,34 @@ prefect-version: 3.10.0
 pull: 
   - prefect.deployments.steps.git_clone:
       repository: https://github.com/open-politics/opol.git
-      credentials: "{{ prefect.blocks.github-credentials.opp-github-creds }}"
+      credentials: "{{ prefect.blocks.github-credentials.YOUR_GITHUB_CREDS }}"
   - prefect.deployments.steps.set_working_directory:
       directory: /app/opol/opol/stack/
 
 deployments:
+
+  - name: meta
+    entrypoint: ./flows/orchestration/orchestration.py:meta_flow
+    work_pool:
+      name: docker-pool
+      job_variables:
+        image: openpoliticsproject/worker-base:latest
+        env:
+          LOGFIRE_TOKEN: "YOUR_LOGFIRE_TOKEN"
+          REDIS_PORT: "YOUR_REDIS_PORT"
+          REDIS_URL: "YOUR_REDIS_URL"
+          GOOGLE_API_KEY: "YOUR_GOOGLE_API_KEY"
+          OPOL_API_KEY: "YOUR_OPOL_API_KEY"
+          OPOL_MODE: "container"
+        networks:
+          - opol-app-stack
+    version: "1.0.0"
+    tags: ["core-processing-flows"]
+    description: The main flow to orchestrate all flows.
+    enforce_parameter_schema: true
+    schedules:
+      - cron: "*/5 * * * *" # Run every 5 minutes
+
   - name: scraping
     entrypoint: ./flows/scraping/scrape_newssites.py:scrape_newssites_flow
     parameters:
@@ -18,39 +41,20 @@ deployments:
       job_variables:
         image: openpoliticsproject/flow-scraping:latest
         env:
-          LOGFIRE_TOKEN: ""
-          REDIS_PORT: "6379"
-          REDIS_URL: "redis://engine-redis:6379"
-          GOOGLE_API_KEY: ""
-          OPOL_API_KEY: ""
+          LOGFIRE_TOKEN: "YOUR_LOGFIRE_TOKEN"
+          REDIS_PORT: "YOUR_REDIS_PORT"
+          REDIS_URL: "YOUR_REDIS_URL"
+          GOOGLE_API_KEY: "YOUR_GOOGLE_API_KEY"
+          OPOL_API_KEY: "YOUR_OPOL_API_KEY"
           OPOL_MODE: "container"
         networks:
           - opol-app-stack
     version: "1.0.0"
-    tags: []
+    tags: ["core-processing-flows"]
     description: The main flow to scrape newssites.
     enforce_parameter_schema: true
-    schedules: []
-
-  - name: embeddings
-    entrypoint: ./flows/embeddings/generate_embeddings_onebatch.py:generate_embeddings_flow
-    parameters:
-      batch_size: 40
-    work_pool:
-      name: docker-pool
-      job_variables:
-        image: openpoliticsproject/flow-embeddings:latest
-        env:
-          LOGFIRE_TOKEN: ""
-          REDIS_PORT: "6379"
-          REDIS_URL: "redis://engine-redis:6379"
-        networks:
-          - opol-app-stack
-    version: "1.0.0"
-    tags: []
-    description: The main flow to generate embeddings.
-    enforce_parameter_schema: true
-    schedules: []
+    schedules:
+      - cron: "*/30 * * * *" # Run every 30 minutes
 
   - name: entities
     entrypoint: ./flows/entities/extract_entities.py:extract_entities_flow
@@ -59,17 +63,18 @@ deployments:
       job_variables:
         image: openpoliticsproject/flow-entities:latest
         env:
-          LOGFIRE_TOKEN: ""
-          REDIS_PORT: "6379"
-          REDIS_URL: "redis://engine-redis:6379"
+          LOGFIRE_TOKEN: "YOUR_LOGFIRE_TOKEN"
+          REDIS_PORT: "YOUR_REDIS_PORT"
+          REDIS_URL: "YOUR_REDIS_URL"
           PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION: "python"
         networks:
           - opol-app-stack
     version: "1.0.0"
-    tags: []
+    tags: ["core-processing-flows"]
     description: The main flow to extract entities.
     enforce_parameter_schema: true
-    schedules: []
+    schedules:
+      - cron: "0 * * * *" # Run every hour
 
   - name: geocoding
     entrypoint: ./flows/geocoding/geocode_locations.py:geocode_locations_flow
@@ -80,16 +85,17 @@ deployments:
       job_variables:
         image: openpoliticsproject/worker-base:latest
         env:
-          LOGFIRE_TOKEN: ""
-          REDIS_PORT: "6379"
-          REDIS_URL: "redis://engine-redis:6379"
+          LOGFIRE_TOKEN: "YOUR_LOGFIRE_TOKEN"
+          REDIS_PORT: "YOUR_REDIS_PORT"
+          REDIS_URL: "YOUR_REDIS_URL"
         networks:
           - opol-app-stack
     version: "1.0.0"
-    tags: []
+    tags: ["core-processing-flows"]
     description: The main flow to geocode locations.
     enforce_parameter_schema: true
-    schedules: []
+    schedules:
+      - cron: "0 * * * *" # Run every hour
 
   - name: classification
     entrypoint: ./flows/classification/classification_flow.py:classify_contents_flow
@@ -100,16 +106,17 @@ deployments:
       job_variables:
         image: openpoliticsproject/worker-base:latest
         env:
-          LOGFIRE_TOKEN: ""
-          REDIS_PORT: "6379"
-          REDIS_URL: "redis://engine-redis:6379"
-          GOOGLE_API_KEY: ""
-          OPOL_API_KEY: ""
+          LOGFIRE_TOKEN: "YOUR_LOGFIRE_TOKEN"
+          REDIS_PORT: "YOUR_REDIS_PORT"
+          REDIS_URL: "YOUR_REDIS_URL"
+          GOOGLE_API_KEY: "YOUR_GOOGLE_API_KEY"
+          OPOL_API_KEY: "YOUR_OPOL_API_KEY"
           OPOL_MODE: "container"
         networks:
           - opol-app-stack
     version: "1.0.0"
-    tags: []
+    tags: ["core-processing-flows"]
     description: The main flow to classify contents.
     enforce_parameter_schema: true
-    schedules: []
+    schedules:
+      - cron: "0 * * * *" # Run every hour

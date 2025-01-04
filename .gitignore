@@ -31,6 +31,7 @@ commands.sh
 helm/values.yaml
 z_dev_scripts
 prefect.yaml
+prefect-k8s.yaml
 
 opol/opol/stack/services.sh
 opol/opol/stack/flows.sh

@@ -15,6 +15,7 @@ httpx
 logfire
 logfire[asyncpg]
 prefect-docker
+prefect-kubernetes
 opol
 google-generativeai
 instructor

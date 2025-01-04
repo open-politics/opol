@@ -1,0 +1,141 @@
+name: opol-flows
+prefect-version: 3.10.0
+
+pull: 
+  - prefect.deployments.steps.git_clone:
+      repository: https://github.com/open-politics/opol.git
+      credentials: "{{ prefect.blocks.github-credentials.opp-github-creds }}"
+  - prefect.deployments.steps.set_working_directory:
+      directory: /app/opol/opol/stack/
+
+deployments:
+
+  - name: meta-k8s
+    entrypoint: ./flows/orchestration/orchestration.py:meta_flow
+    work_pool:
+      name: kubernetes-pool-prod
+      job_variables:
+        image: openpoliticsproject/worker-base:latest
+        env:
+          LOGFIRE_TOKEN: "YOUR_LOGFIRE_TOKEN"
+          REDIS_PORT: "YOUR_REDIS_PORT"
+          REDIS_URL: "YOUR_REDIS_URL"
+          GOOGLE_API_KEY: "YOUR_GOOGLE_API_KEY"
+          OPOL_API_KEY: "YOUR_OPOL_API_KEY"
+          OPOL_MODE: "container"
+    version: "1.0.0"
+    tags: ["core-processing-flows"]
+    description: The main flow to orchestrate all flows.
+    enforce_parameter_schema: true
+    schedules:
+      - cron: "*/5 * * * *" # Run every 5 minutes
+
+  - name: scraping-k8s
+    entrypoint: ./flows/scraping/scrape_newssites.py:scrape_newssites_flow
+    parameters:
+      flags: ["cnn", "dw", "bbc"]
+    work_pool:
+      name: kubernetes-pool-prod
+      job_variables:
+        image: openpoliticsproject/flow-scraping:latest
+        env:
+          LOGFIRE_TOKEN: "YOUR_LOGFIRE_TOKEN"
+          REDIS_PORT: "YOUR_REDIS_PORT"
+          REDIS_URL: "YOUR_REDIS_URL"
+          GOOGLE_API_KEY: "YOUR_GOOGLE_API_KEY"
+          OPOL_API_KEY: "YOUR_OPOL_API_KEY"
+          OPOL_MODE: "container"
+        networks:
+          - opol-app-stack
+    version: "1.0.0"
+    tags: ["core-processing-flows"]
+    description: The main flow to scrape newssites.
+    enforce_parameter_schema: true
+    schedules:
+      - cron: "*/30 * * * *" # Run every 30 minutes
+
+  - name: entities-k8s
+    entrypoint: ./flows/entities/extract_entities.py:extract_entities_flow
+    work_pool:
+      name: kubernetes-pool-prod
+      job_variables:
+        image: openpoliticsproject/flow-entities:latest
+        env:
+          LOGFIRE_TOKEN: "YOUR_LOGFIRE_TOKEN"
+          REDIS_PORT: "YOUR_REDIS_PORT"
+          REDIS_URL: "YOUR_REDIS_URL"
+          PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION: "python"
+        networks:
+          - opol-app-stack
+    version: "1.0.0"
+    tags: ["core-processing-flows"]
+    description: The main flow to extract entities.
+    enforce_parameter_schema: true
+    schedules:
+      - cron: "0 * * * *" # Run every hour
+
+  - name: geocoding-k8s
+    entrypoint: ./flows/geocoding/geocode_locations.py:geocode_locations_flow
+    parameters:
+      batch_size: 200
+    work_pool:
+      name: kubernetes-pool-prod
+      job_variables:
+        image: openpoliticsproject/worker-base:latest
+        env:
+          LOGFIRE_TOKEN: "YOUR_LOGFIRE_TOKEN"
+          REDIS_PORT: "YOUR_REDIS_PORT"
+          REDIS_URL: "YOUR_REDIS_URL"
+        networks:
+          - opol-app-stack
+    version: "1.0.0"
+    tags: ["core-processing-flows"]
+    description: The main flow to geocode locations.
+    enforce_parameter_schema: true
+    schedules:
+      - cron: "0 * * * *" # Run every hour
+
+  - name: classification-k8s
+    entrypoint: ./flows/classification/classification_flow.py:classify_contents_flow
+    parameters:
+      batch_size: 20
+    work_pool:
+      name: kubernetes-pool-prod
+      job_variables:
+        image: openpoliticsproject/worker-base:latest
+        env:
+          LOGFIRE_TOKEN: "YOUR_LOGFIRE_TOKEN"
+          REDIS_PORT: "YOUR_REDIS_PORT"
+          REDIS_URL: "YOUR_REDIS_URL"
+          GOOGLE_API_KEY: "YOUR_GOOGLE_API_KEY"
+          OPOL_API_KEY: "YOUR_OPOL_API_KEY"
+          OPOL_MODE: "container"
+        networks:
+          - opol-app-stack
+    version: "1.0.0"
+    tags: ["core-processing-flows"]
+    description: The main flow to classify contents.
+    enforce_parameter_schema: true
+    schedules:
+      - cron: "0 * * * *" # Run every hour
+
+  - name: embeddings-k8s
+    entrypoint: ./flows/embeddings/generate_embeddings_onebatch.py:generate_embeddings_flow
+    parameters:
+      batch_size: 60
+    work_pool:
+      name: kubernetes-pool-prod
+      job_variables:
+        image: openpoliticsproject/flow-embeddings:latest
+        env:
+          LOGFIRE_TOKEN: "YOUR_LOGFIRE_TOKEN"
+          REDIS_PORT: "YOUR_REDIS_PORT"
+          REDIS_URL: "YOUR_REDIS_URL"
+        networks:
+          - opol-app-stack
+    version: "1.0.0"
+    tags: ["core-processing-flows"]
+    description: The main flow to generate embeddings.
+    enforce_parameter_schema: true
+    schedules:
+      - cron: "*/13 * * * *" # Run every 13 minutes

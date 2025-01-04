@@ -56,6 +56,16 @@ Because global coverage is huge, we focus on building reliable, modular methods 
 
 We encourage public contributions to add new sources, modules, or classification schemes—ensuring transparency and accountability in how and what we collect.
 
+## Data Privacy & Security
+This is a short note since in no part of our architecture we have embedded tracking or analytics of any sorts (which we invite you to proof-read in our codebase).
+
+The webapp stores a local cookie for the user's session (json web token).
+Additionally, the webapp [open-politics.org](https://open-politics.org) will **maybe** at some point use anonymized telemetry (according to open source best practices) to collect usage data on ui features and interactions for development. Maybe.
+
+To sum up: We do not track any user data - and have no pixels or analytics.
+
+
+
 ## This Repository
 This repo (named opol) contains two core components:
 
