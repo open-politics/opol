@@ -1,16 +1,28 @@
 ![opol](.github/media/opol.png)
 
-**On a mission to find the #NeedleInTheHayStack**
+**Opol** is the beating heart of [*The Open Politics Project*](https://github.com/open-politics/open-politics) — a high-tech stack of efficiently operationalised and modular data methods. Integrated into stack full of useful tools for data driven political analysis.
 
-Opol is the data engine for Open Politics—an open-source, self-hostable solution designed to orchestrate public intelligence operations (O(P)SINT). We combine data engineering, political science, and OSINT best practices to collect, process, and analyze a wide variety of open-source data related to politics, geopolitics, economy, legislation, and more. Our goal is to offer a comprehensive resource that supports deep political, data-driven analyses and fosters transparency.
+
+Our mission is to illuminate the dense web of politics, geopolitics, economics, and legislation through the systematic collection and analysis of open source intelligence. By building a foundation of modular, interconnected data operations, we're not just processing information — we're architecting the technological infrastructure for a more transparent, comprehensible, and genuinely democratic future.
+
+We hope you can find some use in the tools we offer or are intruiged enough to look more closely at the code and maybe even contribute to it.
+
+---
+The Open Politics Project (and thus Opol) are built to enable. To see and measure more of what's happening right now in this maddening clusterfuck that politics is. Fully Open Source and as an asset to everyone. That is our commitment.
+
+
+All of our methods and principles will be laid out in more detail on our [homepage](https://open-politics.org) and upcoming academic work. Especially all the patterns around classification schemes and reranking will need a comprehensive public discussion. Until we have set up such conversation framework please create a github issue or contact us via mail at engage@open-politics.org for any questions on this. 
 
 ## Table of Contents
 - [Introduction](#introduction)
+  - [What is O(P)SINT?](#what-is-opsint)
+  - [Why Opol?](#why-opol)
 - [Features](#features)
 - [Data Coverage](#data-coverage)
+- [Data Privacy & Security](#data-privacy--security)
 - [This Repository](#this-repository)
-  1. [Python Client](#python-client)
-  2. [The Stack](#the-stack)
+  - [Python Client](#python-client)
+  - [The Stack](#the-stack)
 - [Quick Installation and Usage](#quick-installation-and-usage)
 - [Example Usage](#example-usage)
 - [Further Documentation](#further-documentation)
@@ -28,21 +40,28 @@ Open Source Political Intelligence (O(P)SINT) is a specialized form of OSINT, ta
 
 ### Why Opol?
 - **Better Data Access**: A robust platform that centralizes data from multiple sources (news, economic statistics, polls, legislation).
-- **Scalable & Modular**: Microservice architecture, container-based deployment, and a flexible pipeline orchestrated via Prefect.
+- **Scalable & Modular**: Microservice architecture, container-based deployment, and a flexible and highly ressource efficient pipeline orchestrated via Prefect.
 - **Extendable**: Easily add your own sources, classification schemes, or transformations.
 - **Transparency & Community**: This is a public intelligence operation—community contributions and reviews are welcomed.
 
 ## Features
-Opol tackles the entire data lifecycle—from ingestion to analysis—and exposes interfaces for advanced capabilities:
+Opol offers a comprehensive suite of tools and functionalities designed to streamline the entire data lifecycle for political intelligence:
+- **Data Ingestion & Scraping**: Automate the collection of diverse data sources, including news, economic metrics, polls, and legislation across multiple regions.
+- **Advanced Search & Semantic Capabilities**: Utilize a vectorized search interface powered by SearXng meta-search, supporting queries across platforms like Google, DuckDuckGo, Wikipedia, Arxiv, and YouTube.
+- **Natural Language Processing**:
+  - **LLM Classifications**: Leverage large language models to categorize documents with event types, topics, and relevance scores.
+  - **Embeddings**: Generate vector embeddings for semantic search and advanced NLP tasks.
+- **Reranking**: Enhance search result relevance through semantic similarity-based reranking.
+- **Entity Recognition & Geocoding**: Identify key entities (people, locations, organizations) and convert geographical references into latitude-longitude coordinates for geospatial analysis.
+- **Data Storage & Management**:
+  - **Vector Database**: Implement pgvector for efficient text similarity queries.
+  - **SQL Database**: Manage article metadata, including topics, entities, classification scores, and events.
+- **Orchestration & Workflow Management**: Employ Prefect for scalable, isolated batch processing and live data operations, ensuring efficient handling of complex data pipelines.
+- **Live Services & API Integration**: FastAPI-powered microservices offer real-time data access, embeddings generation, and contextual retrieval.
+  - **Geospatial Utilities**: Tools for generating GeoJSON and integrating with SearXng for enhanced data enrichment.
+- **Extensibility & Customization**: Easily add new data sources, classification schemes, or transformations to adapt to evolving analytical needs (e.g. new LLM models).
 
-- **Scraping**: Collect data such as news, economic metrics, polls, and legislation from specified sources.
-- **Embeddings**: Transform text into vector embeddings for semantic search and deeper NLP tasks.
-- **Entity Extraction**: Identify people, locations, organizations, geo-political entities, and more.
-- **Geocoding**: Convert recognized locations into latitude-longitude data for mapping or geospatial analysis.
-- **LLM Classifications**: Classify documents using large language models to annotate content with event types, topics, or relevance scores.
-- **Vector Database**: Index semantic embeddings in a specialized store (e.g., pgvector) for robust text similarity queries.
-- **SQL Database**: Store article metadata (topics, entities, classification scores, events) in a relational database.
-- **Utilities**: Helpers like generating GeoJSON, using SearXng for meta-search, or hooking up to any LLM for contextual retrieval.
+Many of these features are available as core processing element (like chunking & embedding all scraped content) and live inference (like embedding generation for queries or reranking). 
 
 ## Data Coverage
 Because global coverage is huge, we focus on building reliable, modular methods that can be extended to new geographies and data sets. Current efforts are aimed at:
