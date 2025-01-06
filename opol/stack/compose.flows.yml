@@ -1,0 +1,27 @@
+services:
+
+
+## How to run a flow to test it locally
+
+  flowrunner:
+    build:
+      context: flows/x_dev
+      dockerfile: ./Dockerfile
+    env_file:
+      - .env
+    command: ["python", "x_dev/bunestag_daily.py"]
+    volumes:
+      - ./flows:/app/
+
+  ## if you need the core package:
+  # container_with_core_package:
+  #   build: 
+  #     context: . # set to /stack so we can import core in flows from ../../core and even dependencies from other servicews like "COPY services/service-entities/requirements.txt ."
+  #     dockerfile: ./services/service-scraper/Dockerfile
+
+networks:
+  default:
+    external: false
+  opol-app-stack:
+    driver: bridge
+    external: true
