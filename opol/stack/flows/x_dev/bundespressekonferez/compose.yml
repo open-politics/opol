@@ -1,0 +1,9 @@
+services:
+  bundespressekonferez:
+    image: openpoliticsproject/flow-bundespressekonferez:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./results:/app/results
+    command: python main.py

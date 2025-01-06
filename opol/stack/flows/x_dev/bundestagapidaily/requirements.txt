@@ -1,0 +1,13 @@
+onnxruntime
+prettyprint
+opol
+prefect
+scikit-learn
+numpy
+google-generativeai
+instructor
+transformers
+torch
+matplotlib
+einops
+sentence-transformers

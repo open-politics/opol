@@ -1,0 +1,5 @@
+/results/*.mp4
+/results/*.mp3
+/results/*.wav
+
+.log
