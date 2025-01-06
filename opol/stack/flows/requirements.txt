@@ -19,3 +19,4 @@ prefect-kubernetes
 opol
 google-generativeai
 instructor
+prettyprint

@@ -37,7 +37,7 @@ LABEL_KEYWORDS_EXTENDED = [
     ("Korruption", 23),
     ("Wissenschaft", 24),
     ("Technologie", 25),
-    ("Bundestag Protokoll", 26),
+    ("Bundestag Protokoll", 26), ### Bundestags Classes
     ("Bundestag Gesetzesentwurf", 27),
     ("Bundestag Bericht", 28),
     ("Bundestag Antrag", 29)
@@ -48,7 +48,7 @@ DEFAULT_LABEL = 5  # Other
 # Existing tasks
 @task
 def get_article_for_bundestag(date: str):
-    opol = OPOL(api_key="kgfWztuskTnN6b27", mode="remote")
+    opol = OPOL(api_key="", mode="remote") # oops, changed it
     articles = opol.search.engine(f"Nachrichten aus dem Bundestag {date}")
     print("Fetching articles for Bundestag:")
     for article in articles[:1]:
