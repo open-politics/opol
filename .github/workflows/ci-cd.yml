@@ -28,8 +28,8 @@ jobs:
       
       - name: Build and Push Base Worker
         run: |
-          cd opol/stack/flows
-          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/worker-base:${{ github.sha }} -f ./Dockerfile .
+          cd opol/stack/
+          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/worker-base:${{ github.sha }} -f ./flows/Dockerfile .
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/worker-base:${{ github.sha }}
       
       - name: Build and Push Embedding Flow
