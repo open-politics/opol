@@ -4,7 +4,7 @@
 python backend_pre_start.py
 
 # Run migrations 
-# alembic revision --autogenerate -m "Adding top locations and entities to content"
+# alembic revision --autogenerate -m "Set default UUID for id column"
 
 # # Migrate
 alembic upgrade head
