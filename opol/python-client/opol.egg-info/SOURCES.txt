@@ -13,6 +13,7 @@ opol/api/__init__.py
 opol/api/articles.py
 opol/api/classification.py
 opol/api/client_base.py
+opol/api/documents.py
 opol/api/economic.py
 opol/api/embeddings.py
 opol/api/entities.py

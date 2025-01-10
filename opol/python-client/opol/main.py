@@ -6,6 +6,7 @@ from .api.scraping import Scraping
 from .api.legislation import Legislation
 from .api.search import Search
 from .api.embeddings import Embeddings
+from .api.documents import DocumentManager
 import os
 
 class OPOL:
@@ -22,7 +23,8 @@ class OPOL:
         self.search = Search(mode, api_key, timeout=timeout)
         self._classification = None  # Lazy initialization
         self.embeddings = Embeddings(mode, api_key, timeout=timeout)
-
+        self.documents = DocumentManager(mode, api_key, timeout=timeout)
+        
     def classification(self, provider: str = "Google", model_name: str = "models/gemini-1.5-flash-latest", llm_api_key: str = None):
         if not self._classification:
             self._classification = Classification(

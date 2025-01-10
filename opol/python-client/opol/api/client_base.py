@@ -1,5 +1,5 @@
 from abc import ABC
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import httpx
 import logging
 from urllib.parse import urljoin
@@ -70,6 +70,7 @@ class BaseClient(ABC):
         except httpx.RequestError as e:
             logger.error(f"Request error occurred: {e} for URL: {full_url}")
             raise
+    
 
     def close(self):
         self.client.close()
