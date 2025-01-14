@@ -1,4 +1,4 @@
-from typing import Dict, List, Tuple, Optional, Union
+from typing import Dict, List, Union, Optional
 from .client_base import BaseClient
 import numpy as np
 from enum import Enum
@@ -21,7 +21,7 @@ class Embeddings(BaseClient):
     def __call__(self, *args, **kwargs):
         return self.get_embeddings(*args, **kwargs)
     
-    def generate(self, text: Union[str, List[str]], embedding_type: EmbeddingTypes = EmbeddingTypes.CLASSIFICATION) -> dict:
+    def generate(self, text: Union[str, List[str]], embedding_type: Optional[str] = "separation") -> dict:
         """
         Fetch embeddings for a given text and embedding type.
 
@@ -29,21 +29,21 @@ class Embeddings(BaseClient):
             text (str): The text to generate embeddings for.
             embedding_type (str): The type of embedding task.
             
-            Embedding Types:
-                class EmbeddingTypes(str, Enum):
-                    QUERY = "retrieval.query"
-                    PASSAGE = "retrieval.passage"
-                    MATCHING = "text-matching"
-                    CLASSIFICATION = "classification"
-                    SEPARATION = "separation"
         Returns:
             dict: The embeddings for the text.
         """
         if isinstance(text, str):
             text = [text]
         endpoint = f"/embeddings"
+        
+        # Convert string embedding_type to EmbeddingTypes Enum if possible
+        try:
+            embedding_type_enum = EmbeddingTypes(embedding_type)
+        except ValueError:
+            raise ValueError(f"Invalid embedding type: {embedding_type}")
+
         params = {
-            "embedding_type": embedding_type.value,
+            "embedding_type": embedding_type_enum.value,
             "texts": text
         }
         response = self.post(endpoint, json=params)
@@ -58,8 +58,8 @@ class Embeddings(BaseClient):
                passages: List[str],
                lean: bool = False
                ) -> Union[List[Dict[str, Union[str, float, int]]], List[int]]:
-        query_embedding = self.generate(query, embedding_type=EmbeddingTypes.SEPARATION)
-        passages_embeddings = self.generate(passages, embedding_type=EmbeddingTypes.SEPARATION)
+        query_embedding = self.generate(query, embedding_type="separation")
+        passages_embeddings = self.generate(passages, embedding_type="separation")
 
         ranked_vectors = sorted(
             [{"content": passages[i], "similarity": self.cosine(query_embedding, vector), "index": i} for i, vector in enumerate(passages_embeddings)],
@@ -74,8 +74,8 @@ class Embeddings(BaseClient):
     def rerank_articles(self, 
                query: str, 
                articles: List[Dict], 
-               query_emb_type: EmbeddingTypes = EmbeddingTypes.QUERY, 
-               articles_emb_type: EmbeddingTypes = EmbeddingTypes.PASSAGE, 
+               query_emb_type: str = "retrieval.query", 
+               articles_emb_type: str = "retrieval.passage", 
                text_field: str = "title",
                lean: bool = False
                ) -> Union[List[Dict[str, Union[Dict, float]]], List[int]]:
