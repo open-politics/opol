@@ -3,32 +3,51 @@ import os
 import asyncio
 import subprocess
 from enum import Enum
+from typing import Optional, Dict, Any
 
 # Third-party imports
 import httpx
-from fastapi import FastAPI, HTTPException, Request, BackgroundTasks, APIRouter, Path, Query
+from fastapi import (
+    FastAPI,
+    HTTPException,
+    Request,
+    BackgroundTasks,
+    APIRouter,
+    Path,
+    Query,
+    Depends,
+)
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from redis.asyncio import Redis
-# from prefect import task, flow, deploy
-# from prefect.deployments import run_deployment
 from pydantic import BaseModel
 from fastapi.logger import logger
 import logging
+
 from jinja2 import Environment, FileSystemLoader
 
 # Local imports
 from core.service_mapping import ServiceConfig
 from core.utils import get_redis_url
 
-from flows.orchestration import produce_flags, create_embedding_jobs, create_entity_extraction_jobs, create_geocoding_jobs, create_classification_jobs
-from flows.orchestration import store_raw_contents, store_contents_with_embeddings, store_contents_with_entities, store_contents_with_geocoding, store_contents_with_classification
+from flows.orchestration import (
+    produce_flags,
+    create_embedding_jobs,
+    create_entity_extraction_jobs,
+    create_geocoding_jobs,
+    create_classification_jobs,
+    store_raw_contents,
+    store_contents_with_embeddings,
+    store_contents_with_entities,
+    store_contents_with_geocoding,
+    store_contents_with_classification,
+    geocode_contents,
+)
 
-
+# Initialize templates
 templates = Jinja2Templates(directory="templates")
 config = ServiceConfig()
-
 
 # FastAPI Setup
 app = FastAPI()
@@ -40,11 +59,335 @@ status_message = "Ready to start scraping."
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("uvicorn.access")
-logger.setLevel(logging.WARNING) 
+logger.setLevel(logging.WARNING)
 
-### API Endpoints grouped by functionality
+# Global variable to store the current pool type
+current_pool_type = "k8s"
 
-## Health and Monitoring
+class PipelineManager:
+    def __init__(self, config: ServiceConfig, redis_conn: Redis):
+        self.config = config
+        self.redis_conn = redis_conn
+        self.pipelines = {
+            "scraping": {
+                "title": "Scraping Pipeline",
+                "input": "Flags",
+                "output": "Raw Contents",
+                "steps": [
+                    {"name": "produce_flags", "label": "1. Produce Flags"},
+                    {"name": "scrape_sources", "label": "2. Scrape"},
+                    {"name": "store_raw_contents", "label": "3. Store Raw Contents"},
+                ],
+                "channels": ["scrape_sources", "raw_contents_queue"],
+            },
+            "embedding": {
+                "title": "Embedding Pipeline",
+                "input": "Raw Contents",
+                "output": "Embedded Contents",
+                "steps": [
+                    {"name": "create_embedding_jobs", "label": "1. Create Jobs"},
+                    {"name": "generate_embeddings", "label": "2. Generate", "batch": True},
+                    {"name": "store_contents_with_embeddings", "label": "3. Store"},
+                ],
+                "channels": ["contents_without_embedding_queue", "contents_with_embeddings"],
+            },
+            "entity_extraction": {
+                "title": "Entity Extraction Pipeline",
+                "input": "Raw Contents",
+                "output": "Contents with Entities",
+                "steps": [
+                    {"name": "create_entity_extraction_jobs", "label": "1. Create Jobs"},
+                    {"name": "extract_entities", "label": "2. Extract", "batch": True},
+                    {"name": "store_contents_with_entities", "label": "3. Store"},
+                ],
+                "channels": [
+                    "contents_without_entities_queue",
+                    "contents_with_entities_queue",
+                ],
+            },
+            "geocoding": {
+                "title": "Geocoding Pipeline",
+                "input": "Contents with Entities",
+                "output": "Geocoded Contents",
+                "steps": [
+                    {"name": "create_geocoding_jobs", "label": "1. Create Jobs"},
+                    {"name": "geocode_contents", "label": "2. Geocode", "batch": True},
+                    {"name": "store_contents_with_geocoding", "label": "3. Store"},
+                ],
+                "channels": [
+                    "contents_without_geocoding_queue",
+                    "contents_with_geocoding_queue",
+                ],
+            },
+            "classification": {
+                "title": "Classification Pipeline",
+                "input": "Processed Contents",
+                "output": "Classified Contents",
+                "steps": [
+                    {"name": "create_classification_jobs", "label": "1. Create Jobs"},
+                    {"name": "classify_contents", "label": "2. Process", "batch": True},
+                    {"name": "store_contents_with_classification", "label": "3. Store"},
+                ],
+                "channels": [
+                    "contents_without_classification_queue",
+                    "contents_with_classification_queue",
+                ],
+            },
+        }
+
+    async def trigger_step(
+        self,
+        step_name: str,
+        pipeline_name: str,
+        batch_size: int = 50,
+        pool_type: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        global current_pool_type
+        pool_type = pool_type or current_pool_type
+        logger.info(
+            f"Triggering step: {step_name} in pipeline: {pipeline_name} with pool type: {pool_type}"
+        )
+
+        saving_steps = {
+            "store_raw_contents": store_raw_contents,
+            "store_contents_with_embeddings": store_contents_with_embeddings,
+            "store_contents_with_entities": store_contents_with_entities,
+            "store_contents_with_geocoding": store_contents_with_geocoding,
+            "store_contents_with_classification": store_contents_with_classification,
+        }
+
+        job_creation_steps = {
+            "produce_flags": produce_flags,
+            "create_embedding_jobs": create_embedding_jobs,
+            "create_entity_extraction_jobs": create_entity_extraction_jobs,
+            "create_geocoding_jobs": create_geocoding_jobs,
+            "create_classification_jobs": create_classification_jobs,
+        }
+
+        process_steps = {
+            "scrape_sources": "scrape-newssites-flow/scraping",
+            "generate_embeddings": "generate-embeddings-flow/embeddings",
+            "extract_entities": "extract-entities-flow/entities",
+            "classify_contents": "classify-contents-flow/classification",
+            "geocode_contents": "geocode-locations-flow/geocoding",
+        }
+
+        if pool_type == "k8s":
+            process_steps = {k: v + "-k8s" for k, v in process_steps.items()}
+
+        try:
+            if step_name in job_creation_steps:
+                await job_creation_steps[step_name]()
+                response_message = f"Function '{job_creation_steps[step_name].__name__}' executed successfully."
+                deployment_id = None
+            elif step_name in saving_steps:
+                saving_function = saving_steps[step_name]
+                await saving_function()  # Ensure the function is awaitable if it's async
+                response_message = f"Function '{saving_function.__name__}' executed successfully."
+                deployment_id = None
+            elif step_name in process_steps:
+                deployment_name = process_steps[step_name]
+                subprocess.run(
+                    ["prefect", "deployment", "run", deployment_name], check=True
+                )
+                response_message = f"Prefect deployment '{deployment_name}' triggered successfully."
+                deployment_id = None
+            else:
+                raise HTTPException(
+                    status_code=404, detail=f"Invalid step name: {step_name}"
+                )
+
+            return {
+                "message": response_message,
+                "deployment_id": deployment_id,  # Update based on actual Prefect response
+            }
+
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Prefect command failed: {e}")
+            raise HTTPException(
+                status_code=500, detail=f"Failed to trigger Prefect deployment: {e}"
+            )
+        except Exception as e:
+            logger.error(f"Error in trigger_step: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+    async def flush_channels(self, pipeline_name: str) -> Dict[str, Any]:
+        if pipeline_name not in self.pipelines:
+            raise HTTPException(
+                status_code=404, detail=f"Invalid pipeline name: {pipeline_name}"
+            )
+
+        flow_channels = self.pipelines[pipeline_name].get("channels", [])
+
+        flushed_channels = []
+        for channel_name in flow_channels:
+            queue_info = self.config.redis_queues.get(channel_name)
+            if queue_info:
+                await self.redis_conn.select(queue_info["db"])
+                await self.redis_conn.delete(queue_info["key"])
+                flushed_channels.append(channel_name)
+
+        return {
+            "message": f"Flushed Redis channels for {pipeline_name}",
+            "flushed_channels": flushed_channels,
+        }
+
+    async def get_channels_status(self, pipeline_name: Optional[str] = None) -> Dict[str, Any]:
+        channels_status = {}
+        if pipeline_name:
+            if pipeline_name not in self.pipelines:
+                raise HTTPException(status_code=404, detail=f"Invalid pipeline name: {pipeline_name}")
+            flow_channels = self.pipelines[pipeline_name].get('channels', [])
+            channels_status[pipeline_name] = {}
+            for channel in flow_channels:
+                queue_info = self.config.redis_queues.get(channel)
+                if queue_info:
+                    async with self.redis_conn.client() as redis:
+                        await redis.select(queue_info["db"])
+                        queue_length = await redis.llen(queue_info["key"])
+                        channels_status[pipeline_name][channel] = queue_length
+                else:
+                    channels_status[pipeline_name][channel] = None
+        else:
+            # Return status for all pipelines
+            for pname, pipeline in self.pipelines.items():
+                flow_channels = pipeline.get('channels', [])
+                channels_status[pname] = {}
+                for channel in flow_channels:
+                    queue_info = self.config.redis_queues.get(channel)
+                    if queue_info:
+                        async with self.redis_conn.client() as redis:
+                            await redis.select(queue_info["db"])
+                            queue_length = await redis.llen(queue_info["key"])
+                            channels_status[pname][channel] = queue_length
+                    else:
+                        channels_status[pname][channel] = None
+        return channels_status
+
+async def get_pipeline_manager() -> PipelineManager:
+    redis_conn = Redis.from_url(get_redis_url(), decode_responses=True)
+    return PipelineManager(config, redis_conn)
+
+@app.get("/pipeline/{pipeline_name}", response_class=HTMLResponse)
+async def get_pipeline(
+    pipeline_name: str,
+    request: Request,
+    manager: PipelineManager = Depends(get_pipeline_manager)
+):
+    if pipeline_name not in manager.pipelines:
+        raise HTTPException(status_code=404, detail=f"Pipeline '{pipeline_name}' not found.")
+
+    pipeline = manager.pipelines[pipeline_name]
+    # Fetch current channel statuses
+    channel_status = await manager.get_channels_status(pipeline_name)
+
+    await manager.redis_conn.aclose()
+
+    return templates.TemplateResponse(
+        "partials/pipeline.html",
+        {
+            "request": request,
+            "pipeline": pipeline,
+            "pipeline_name": pipeline_name,
+            "channel_status": channel_status.get(pipeline_name, {}),
+            "current_pool_type": current_pool_type,
+        }
+    )
+
+@app.post("/trigger_step/{pipeline_name}/{step_name}")
+async def trigger_step(
+    pipeline_name: str,
+    step_name: str,
+    batch_size: int = Query(50, ge=1, le=100),
+    pool_type: Optional[str] = Query(None),
+    manager: PipelineManager = Depends(get_pipeline_manager),
+):
+    result = await manager.trigger_step(step_name, pipeline_name, batch_size, pool_type)
+    await manager.redis_conn.aclose()
+    return result
+
+@app.post("/flush_redis_channels/{pipeline_name}")
+async def flush_redis_channels(
+    pipeline_name: str, manager: PipelineManager = Depends(get_pipeline_manager)
+):
+    result = await manager.flush_channels(pipeline_name)
+    await manager.redis_conn.aclose()
+    return result
+
+@app.post("/toggle_pool")
+async def toggle_pool(manager: PipelineManager = Depends(get_pipeline_manager)):
+    global current_pool_type
+    current_pool_type = "k8s" if current_pool_type == "docker" else "docker"
+    result = {
+        "message": f"Pool type switched to {current_pool_type}",
+        "current_pool_type": current_pool_type,
+    }
+    await manager.redis_conn.aclose()
+    return result
+
+# Updated Endpoints to Handle Channel Status Checks with HTML Responses
+
+@app.get("/check_channels/{pipeline_name}", response_class=HTMLResponse)
+async def check_channels(
+    pipeline_name: str, 
+    request: Request, 
+    manager: PipelineManager = Depends(get_pipeline_manager)
+):
+    """
+    Get the status of Redis queues for a specific pipeline.
+    """
+    try:
+        status = await manager.get_channels_status(pipeline_name)
+        return templates.TemplateResponse(
+            "partials/channel_status.html",
+            {"request": request, "channel_status": status.get(pipeline_name, {})}
+        )
+    except HTTPException as e:
+        raise e
+    finally:
+        await manager.redis_conn.aclose()
+
+@app.get("/check_channels/status", response_class=HTMLResponse)
+async def check_channels_status(
+    request: Request,
+    manager: PipelineManager = Depends(get_pipeline_manager)
+):
+    """
+    Get the status of Redis queues for all pipelines and render HTML.
+    """
+    try:
+        status = await manager.get_channels_status()
+        # Flatten the status dictionary
+        flattened_status = {k: v for p in status.values() for k, v in p.items()}
+        return templates.TemplateResponse(
+            "partials/channels_status.html",
+            {"request": request, "channel_status": flattened_status}
+        )
+    except HTTPException as e:
+        raise e
+    finally:
+        await manager.redis_conn.aclose()
+
+@app.get("/check_channels/scrapers_running", response_class=HTMLResponse)
+async def check_scrapers_running(
+    request: Request,
+    manager: PipelineManager = Depends(get_pipeline_manager)
+):
+    """
+    Get the status of Redis queues specifically for the Scraping pipeline and render HTML.
+    """
+    try:
+        status = await manager.get_channels_status("scraping")
+        return templates.TemplateResponse(
+            "partials/scrapers_running.html",
+            {"request": request, "channel_status": status.get("scraping", {})}
+        )
+    except HTTPException as e:
+        raise e
+    finally:
+        await manager.redis_conn.aclose()
+
+# Health and Monitoring
 @app.get("/healthz")
 async def healthcheck():
     return {"message": "OK"}
@@ -91,17 +434,15 @@ async def check_services():
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
-    return templates.TemplateResponse("opol.html", {"request": request})
+    return templates.TemplateResponse("opol.html", {"request": request, "current_pool_type": current_pool_type})
 
-## Main Application Routes
 @app.get("/dashboardx", response_class=HTMLResponse)
-async def read_root(background_tasks: BackgroundTasks, request: Request, query: str = "culture and arts"):
+async def read_dashboardx(
+    background_tasks: BackgroundTasks, 
+    request: Request, 
+    query: str = "culture and arts"
+):
     try:
-        postgres_service_url = f"{config.service_urls['service-postgres']}/contents"
-        
-        # Add the query task to the background
-        background_tasks.add_task(fetch_contents, postgres_service_url, query, request)
-
         use_local_prefect_server = os.getenv("LOCAL_PREFECT", "false").lower() == "true"
         if use_local_prefect_server:
             prefect_dashboard_url = "http://localhost:4200/dashboard"
@@ -113,65 +454,15 @@ async def read_root(background_tasks: BackgroundTasks, request: Request, query: 
         return templates.TemplateResponse("index.html", {
             "request": request,
             "search_query": query,
-            "prefect_dashboard_url": prefect_dashboard_url
+            "prefect_dashboard_url": prefect_dashboard_url,
+            "current_pool_type": current_pool_type
         })
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to load dashboard: {str(e)}")
 
-async def fetch_contents(postgres_service_url, query, request):
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            postgres_service_url,
-            params={
-                "search_query": query,
-                "search_type": "semantic",
-                "skip": 0,
-                "limit": 10
-            }
-        )
-
-    if response.status_code == 200:
-        contents = response.json()
-        contents = [{
-            'score': content.get('similarity', 0),
-            'headline': content['title'],
-            'paragraphs': content['text_content'],
-            'url': content['url']
-        } for content in contents]
-        # You might want to store or process the contents here
-    else:
-        # Handle the error or log it
-        pass
-
-@app.get("/contents", response_class=HTMLResponse)
-async def search_contents(
-    request: Request,
-    search_query: str = Query(None),
-    search_type: str = Query("text"),
-    skip: int = 0,
-    limit: int = 10
-):
-    postgres_service_url = f"{config.service_urls['service-postgres']}/contents"
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            postgres_service_url,
-            params={
-                "search_query": search_query,
-                "search_type": search_type,
-                "skip": skip,
-                "limit": limit
-            }
-        )
-
-    if response.status_code == 200:
-        contents = response.json()
-        return templates.TemplateResponse("partials/search_results.html", {"request": request, "contents": contents})
-    else:
-        raise HTTPException(status_code=response.status_code, detail="Failed to fetch contents from PostgreSQL service")
 
 @app.get("/outward_irrelevant_articles", response_class=HTMLResponse)
 async def outward_irrelevant_articles(request: Request):
-    """Fetch and display articles marked as outward/irrelevant."""
     try:
         postgres_service_url = f"{config.service_urls['service-postgres']}/outward_irrelevant"
         async with httpx.AsyncClient() as client:
@@ -179,81 +470,14 @@ async def outward_irrelevant_articles(request: Request):
 
         if response.status_code == 200:
             articles = response.json()
-            # Display raw JSON data in a simple HTML field
             return templates.TemplateResponse("partials/outward_irrelevant_articles.html", {"request": request, "articles": articles})
         else:
             raise HTTPException(status_code=response.status_code, detail="Failed to fetch outward/irrelevant articles")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching outward/irrelevant articles: {str(e)}")
 
-## Pipeline Management
-@app.get("/pipeline/{pipeline_name}", response_class=HTMLResponse)
-async def get_pipeline(request: Request, pipeline_name: str):
-    pipelines = {
-        "scraping": {
-            "title": "Scraping Pipeline",
-            "input": "Flags",
-            "output": "Raw Contents",
-            "steps": [
-                {"name": "produce_flags", "label": "1. Produce Flags"},
-                {"name": "scrape_sources", "label": "2. Scrape"},
-                {"name": "store_raw_contents", "label": "3. Store Raw Contents"}
-            ]
-        },
-        "embedding": {
-            "title": "Embedding Pipeline",
-            "input": "Raw Contents",
-            "output": "Embedded Contents",
-            "steps": [
-                {"name": "create_embedding_jobs", "label": "1. Create Jobs"},
-                {"name": "generate_embeddings", "label": "2. Generate", "batch": True},
-                {"name": "store_contents_with_embeddings", "label": "3. Store"}
-            ]
-        },
-        "entity_extraction": {
-            "title": "Entity Extraction Pipeline",
-            "input": "Raw Contents",
-            "output": "Contents with Entities",
-            "steps": [
-                {"name": "create_entity_extraction_jobs", "label": "1. Create Jobs"},
-                {"name": "extract_entities", "label": "2. Extract", "batch": True},
-                {"name": "store_contents_with_entities", "label": "3. Store"}
-            ]
-        },
-        "geocoding": {
-            "title": "Geocoding Pipeline",
-            "input": "Contents with Entities",
-            "output": "Geocoded Contents",
-            "steps": [
-                {"name": "create_geocoding_jobs", "label": "1. Create Jobs"},
-                {"name": "geocode_contents", "label": "2. Geocode", "batch": True},
-                {"name": "store_contents_with_geocoding", "label": "3. Store"}
-            ]
-        },
-        "classification": {
-            "title": "Classification Pipeline",
-            "input": "Processed Contents",
-            "output": "Classified Contents",
-            "steps": [
-                {"name": "create_classification_jobs", "label": "1. Create Jobs"},
-                {"name": "classify_contents", "label": "2. Process", "batch": True},
-                {"name": "store_contents_with_classification", "label": "3. Store"}
-            ]
-        }
-    }
-    
-    pipeline = pipelines.get(pipeline_name)
-    if not pipeline:
-        raise HTTPException(status_code=404, detail="Pipeline not found")
-    
-    return templates.TemplateResponse("partials/pipeline.html", {
-        "request": request,
-        "pipeline": pipeline,
-        "pipeline_name": pipeline_name
-    })
-
+# Helper Functions
 async def setup_redis_connection():
-    """Create and return a Redis connection."""
     try:
         redis_conn = Redis.from_url(
             url=str(get_redis_url()),
@@ -263,185 +487,6 @@ async def setup_redis_connection():
     except Exception as e:
         raise HTTPException(status_code=500, detail="Failed to connect to Redis")
 
-
-from flows.orchestration import geocode_contents
-
-@app.post("/trigger_step/{step_name}")
-async def trigger_step(step_name: str, batch_size: int = Query(50, ge=1, le=100)):
-    try:
-        # Add context initialization
-        logger.info(f"Triggering step: {step_name}")
-        redis_conn = await setup_redis_connection()
-
-        saving_steps = {
-            "store_raw_contents": store_raw_contents,
-            "store_contents_with_embeddings": store_contents_with_embeddings,
-            "store_contents_with_entities": store_contents_with_entities,
-            "store_contents_with_geocoding": store_contents_with_geocoding,
-            "store_contents_with_classification": store_contents_with_classification
-        }
-
-        job_creation_steps = {
-            "produce_flags": produce_flags,
-            "create_embedding_jobs": create_embedding_jobs,
-            "create_entity_extraction_jobs": create_entity_extraction_jobs,
-            "create_geocoding_jobs": create_geocoding_jobs,
-            "create_classification_jobs": create_classification_jobs
-        }
-    
-        process_steps = {
-            "scrape_sources": "scrape-newssites-flow/scraping",
-            "generate_embeddings": "generate-embeddings-flow/embeddings",
-            "extract_entities": "extract-entities-flow/entities",
-            "classify_contents": "classify-contents-flow/classification",
-            "geocode_contents": "geocode-locations-flow/geocoding"
-        }
-
-        if step_name in job_creation_steps:
-            job_creation_function = job_creation_steps[step_name]
-            await job_creation_function()
-            response_message = f"Function '{job_creation_function.__name__}' executed successfully."
-            deployment_id = None
-        elif step_name in saving_steps:
-            # Directly call the Python function
-            saving_function = saving_steps[step_name]
-            await saving_function()  # Ensure the function is awaitable if it's async
-            response_message = f"Function '{saving_function.__name__}' executed successfully."
-            deployment_id = None
-        elif step_name in process_steps:
-            deployment_name = process_steps[step_name]
-            subprocess.run(["prefect", "deployment", "run", deployment_name], check=True)
-            response_message = f"Prefect deployment '{deployment_name}' triggered successfully."
-            deployment_id = None
-        else:
-            raise HTTPException(status_code=404, detail=f"Invalid step name: {step_name}")
-
-        await redis_conn.aclose()  # Clean up
-        
-        return {
-            "message": response_message,
-            "deployment_id": deployment_id  # This can be updated based on actual Prefect response
-        }
-
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Prefect command failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to trigger Prefect deployment: {e}")
-    except Exception as e:
-        logger.error(f"Error in trigger_step: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-## Redis Channel Management
-@app.get("/check_channels/{flow_name}", response_class=HTMLResponse)
-async def check_channels(request: Request, flow_name: str):
-    channels = {}
-    try:
-        redis_url = get_redis_url()
-        try:
-            redis_conn = Redis.from_url(redis_url, decode_responses=True)
-            await redis_conn.ping()
-        except Exception as e:
-            logger.error(f"Failed to connect to Redis at {redis_url}: {e}")
-            raise HTTPException(status_code=500, detail="Error connecting to Redis")
-        
-        flow_channels = {
-            "status": {"Orchestration_in_progress"},
-            "scrapers_running": {"scrapers_running"},
-            "scraping": ["scrape_sources", "raw_contents_queue"],
-            "embedding": ["contents_without_embedding_queue", "contents_with_embeddings"],
-            "entity_extraction": ["contents_without_entities_queue", "contents_with_entities_queue"],
-            "geocoding": ["contents_without_geocoding_queue", "contents_with_geocoding_queue"],
-            "semantics": ["contents_without_tags_queue", "contents_with_tags_queue"],
-            "classification": ["contents_without_classification_queue", "contents_with_classification_queue"],
-            "failed_geocodes": ["failed_geocodes_queue"]
-        }
-        
-        if flow_name not in flow_channels:
-            raise HTTPException(status_code=404, detail=f"Invalid flow name: {flow_name}")
-        
-        for channel_name in flow_channels[flow_name]:
-            queue_info = config.redis_queues.get(channel_name)
-            if queue_info:
-                try:
-                    await redis_conn.select(queue_info['db'])
-                    if channel_name in ['Orchestration_in_progress', 'scrapers_running']:
-                        value = await redis_conn.get(queue_info['key'])
-                        channels[channel_name] = 'Active' if value == '1' else 'Inactive'
-                    else:
-                        value = await redis_conn.llen(queue_info['key'])
-                        channels[channel_name] = int(value)  # Ensure numeric value
-                except Exception as e:
-                    logger.error(f"Error accessing Redis for channel '{channel_name}': {e}")
-                    channels[channel_name] = 'Error accessing Redis'
-        
-        await redis_conn.aclose()
-        
-    except HTTPException as http_exc:
-        raise http_exc
-    except Exception as e:
-        logger.error(f"Unexpected error in check_channels: {e}")
-        raise HTTPException(status_code=500, detail="Unexpected error occurred")
-    finally:
-        logger.setLevel(logging.INFO)
-   
-    return templates.TemplateResponse("partials/multiple_channel_info.html", {"request": request, "channels": channels})
-
-@app.post("/flush_redis_channels/{flow_name}")
-async def flush_redis_channels(flow_name: str = Path(..., description="The name of the flow to flush")):
-    redis_url = get_redis_url()
-    redis_conn = Redis.from_url(redis_url, decode_responses=True)
-    
-    flow_channels = {
-        "scraping": ["scrape_sources", "raw_contents_queue"],
-        "embedding": ["contents_without_embedding_queue", "contents_with_embeddings"],
-        "entity_extraction": ["contents_without_entities_queue", "contents_with_entities_queue"],
-        "geocoding": ["contents_without_geocoding_queue", "contents_with_geocoding_queue"],
-        "semantics": ["contents_without_tags_queue", "contents_with_tags_queue"],
-        "classification": ["contents_without_classification_queue", "contents_with_classification_queue"]
-    }
-    
-    if flow_name not in flow_channels:
-        raise HTTPException(status_code=404, detail=f"Invalid flow name: {flow_name}")
-    
-    flushed_channels = []
-    for channel_name in flow_channels[flow_name]:
-        queue_info = config.redis_queues.get(channel_name)
-        if queue_info:
-            await redis_conn.select(queue_info['db'])
-            await redis_conn.delete(queue_info['key'])
-            flushed_channels.append(channel_name)
-    
-    await redis_conn.aclose()
-    
-    return {"message": f"Flushed Redis channels for {flow_name}", "flushed_channels": flushed_channels}
-
-## Scraping Control
-@app.post("/trigger_scraping_sequence")
-async def trigger_scraping_flow():
-    try:
-        return {"message": "Scraping flow triggered"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to trigger scraping flow: {str(e)}")
-
-@app.post("/trigger_scraping")
-async def trigger_scraping():
-    try:
-        subprocess.run(["python", "flows/orchestration.py"], check=True)
-        return {"message": "Scraping flow triggered"}
-    except subprocess.CalledProcessError as e:
-        raise HTTPException(status_code=500, detail=f"Failed to trigger scraping flow: {str(e)}")
-
-## Embedding Management
-@app.post("/store_embeddings_in_qdrant")
-async def store_embeddings_in_qdrant():
-    response = await httpx.post(f"{config.SERVICE_URLS['qdrant-service']}/store_embeddings")
-    if response.status_code == 200:
-        return {"message": "Embeddings storage in Qdrant triggered successfully."}
-    else:
-        raise HTTPException(status_code=response.status_code, detail="Failed to trigger embeddings storage in Qdrant.")
-
-### Helper Functions
-
-## Redis Operations
 async def get_redis_queue_length(redis_db: int, queue_key: str):
     try:
         redis_conn = Redis(host=os.getenv('REDIS_HOST', 'redis'), port=int(os.getenv('REDIS_PORT', 6379)), db=redis_db)
@@ -450,7 +495,6 @@ async def get_redis_queue_length(redis_db: int, queue_key: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Redis error: {str(e)}")
 
-## Data Models
 class SearchType(str, Enum):
     TEXT = "text"
     SEMANTIC = "semantic"
@@ -471,7 +515,6 @@ async def clear_redis_data():
         raise HTTPException(status_code=500, detail=f"Error clearing Redis data: {str(e)}")
 
 async def log_redis_url():
-    """Log the Redis URL every second."""
     try:
         redis_url = get_redis_url()
     except Exception as e:
@@ -489,24 +532,5 @@ def is_number(value):
     except (ValueError, TypeError):
         return False
 
-# Register the custom filter
 templates.env.filters['is_number'] = is_number
-
-# Define the custom test
-def is_number(value):
-    try:
-        float(value)
-        return True
-    except (ValueError, TypeError):
-        return False
-
-# Register the custom test
 templates.env.tests['is_number'] = is_number
-
-
-# Read rejected Geocodes
-@app.get("/read_failed_geocodes")
-async def read_failed_geocodes():
-    redis_conn = await setup_redis_connection()
-    failed_geocodes = await redis_conn.lrange('failed_geocodes_queue', 0, -1)
-    return {"failed_geocodes": failed_geocodes}

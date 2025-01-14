@@ -9,7 +9,6 @@
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" rel="stylesheet">
     <script src="https://unpkg.com/htmx.org@1.5.0/dist/htmx.js"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" rel="stylesheet">
     <style>
         body {
             background-color: #0a192f;
@@ -42,6 +41,7 @@
         }
 
         .progress-bar {
+            max-width: 200px; /* Set a maximum width to prevent overflow */
             height: 6px;
             background-color: #2d3748;
             border-radius: 3px;
@@ -52,6 +52,7 @@
             height: 100%;
             background-color: #4299e1;
             transition: width 0.3s ease;
+            width: 0%; /* Initial width */
         }
 
         .flow-container {
@@ -125,81 +126,46 @@
                 </div>
             </div>
 
-            <!-- Search Articles -->
-            <div class="bg-card rounded-lg p-4 grid-item col-span-2">
-                <h2 class="text-xl font-semibold mb-4">Search Articles</h2>
-                <form hx-get="/articles" hx-target="#search-results" hx-trigger="submit">
-                    <div class="flex flex-col space-y-4">
-                        <input class="bg-gray-700 text-white rounded px-4 py-2 focus:outline-none" type="text" name="search_query" placeholder="Search articles...">
-                        
-                        <div class="flex flex-wrap -mx-2">
-                            <div class="w-full md:w-1/2 px-2 mb-4">
-                                <fieldset class="border border-gray-600 rounded p-3">
-                                    <legend class="font-semibold px-2">Search Type</legend>
-                                    <div class="flex space-x-4">
-                                        <label class="flex items-center">
-                                            <input type="radio" name="search_type" value="text" checked class="mr-2">
-                                            Text Search
-                                        </label>
-                                        <label class="flex items-center">
-                                            <input type="radio" name="search_type" value="semantic" class="mr-2">
-                                            Semantic Search
-                                        </label>
-                                    </div>
-                                </fieldset>
-                            </div>
-                            
-                            <div class="w-full md:w-1/2 px-2 mb-4">
-                                <fieldset class="border border-gray-600 rounded p-3">
-                                    <legend class="font-semibold px-2">Filters</legend>
-                                    <div class="flex flex-wrap -mx-2">
-                                        <label class="w-1/2 px-2 flex items-center mb-2">
-                                            <input type="checkbox" name="has_embeddings" value="true" class="mr-2">
-                                            Has Embedding
-                                        </label>
-                                        <label class="w-1/2 px-2 flex items-center mb-2">
-                                            <input type="checkbox" name="has_geocoding" value="true" class="mr-2">
-                                            Has Geocoding
-                                        </label>
-                                        <label class="w-1/2 px-2 flex items-center mb-2">
-                                            <input type="checkbox" name="has_entities" value="true" class="mr-2">
-                                            Has Entities
-                                        </label>
-                                        <label class="w-1/2 px-2 flex items-center mb-2">
-                                            <input type="checkbox" name="has_classification" value="true" class="mr-2">
-                                            Has Classification
-                                        </label>
-                                    </div>
-                                </fieldset>
-                            </div>
-                        </div>
-                        
-                        <div class="flex flex-wrap -mx-2">
-                            <div class="w-full md:w-1/2 px-2 mb-4">
-                                <label class="block font-semibold mb-2">Entity</label>
-                                <input class="w-full bg-gray-700 text-white rounded px-4 py-2 focus:outline-none" type="text" name="entity" placeholder="Filter by entity...">
-                            </div>
-                            <div class="w-full md:w-1/2 px-2 mb-4">
-                                <label class="block font-semibold mb-2">Location</label>
-                                <input class="w-full bg-gray-700 text-white rounded px-4 py-2 focus:outline-none" type="text" name="location" placeholder="Filter by location...">
-                            </div>
-                        </div>
-                        
-                        <div class="flex flex-wrap -mx-2">
-                            <div class="w-full md:w-1/2 px-2 mb-4">
-                                <label class="block font-semibold mb-2">Skip</label>
-                                <input class="w-full bg-gray-700 text-white rounded px-4 py-2 focus:outline-none" type="number" name="skip" value="0" min="0">
-                            </div>
-                            <div class="w-full md:w-1/2 px-2 mb-4">
-                                <label class="block font-semibold mb-2">Limit</label>
-                                <input class="w-full bg-gray-700 text-white rounded px-4 py-2 focus:outline-none" type="number" name="limit" value="10" min="1">
-                            </div>
-                        </div>
-                        
-                        <button class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded transition duration-300" type="submit">
-                            Search
-                        </button>
+            <!-- Search Form -->
+            <div class="bg-card rounded-lg p-4 grid-item">
+                <h2 class="text-xl font-semibold mb-4">Search</h2>
+                <form hx-post="/search" hx-trigger="submit" hx-target="#search-results">
+                    <div class="mb-4">
+                        <label class="block font-semibold mb-2" for="query">Query</label>
+                        <input class="w-full bg-gray-700 text-white rounded px-4 py-2 focus:outline-none" type="text" name="query" id="query" placeholder="Enter search query..." required>
                     </div>
+                    <div class="flex flex-wrap -mx-2 mb-4">
+                        <div class="w-full md:w-1/2 px-2 mb-4">
+                            <label class="block font-semibold mb-2">Search Type</label>
+                            <select class="w-full bg-gray-700 text-white rounded px-4 py-2 focus:outline-none" name="search_type">
+                                <option value="text">Text</option>
+                                <option value="semantic">Semantic</option>
+                            </select>
+                        </div>
+                        <div class="w-full md:w-1/2 px-2 mb-4">
+                            <label class="block font-semibold mb-2">Filter by Entity</label>
+                            <input class="w-full bg-gray-700 text-white rounded px-4 py-2 focus:outline-none" type="text" name="entity" placeholder="Filter by entity...">
+                        </div>
+                    </div>
+
+                    <div class="flex flex-wrap -mx-2 mb-4">
+                        <div class="w-full md:w-1/2 px-2 mb-4">
+                            <label class="block font-semibold mb-2">Location</label>
+                            <input class="w-full bg-gray-700 text-white rounded px-4 py-2 focus:outline-none" type="text" name="location" placeholder="Filter by location...">
+                        </div>
+                        <div class="w-full md:w-1/2 px-2 mb-4">
+                            <label class="block font-semibold mb-2">Skip</label>
+                            <input class="w-full bg-gray-700 text-white rounded px-4 py-2 focus:outline-none" type="number" name="skip" value="0" min="0">
+                        </div>
+                        <div class="w-full md:w-1/2 px-2 mb-4">
+                            <label class="block font-semibold mb-2">Limit</label>
+                            <input class="w-full bg-gray-700 text-white rounded px-4 py-2 focus:outline-none" type="number" name="limit" value="10" min="1">
+                        </div>
+                    </div>
+
+                    <button class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded transition duration-300" type="submit">
+                        Search
+                    </button>
                 </form>
             </div>
         </div>
@@ -217,26 +183,27 @@
             <h2 class="text-xl font-semibold mb-4">Orchestration Steps</h2>
             <div class="flex items-center space-x-4 bg-gray-800 p-2 rounded-lg">
                 <div class="flex-grow">
-                    <div id="scraping-channels" class="flex justify-between items-center" hx-get="/check_channels/status" hx-trigger="load, every 4s" hx-target="this">
-                        <span class="font-semibold">Scraping Status:</span>
-                        <span>Loading...</span>
-                    </div>
                 </div>
                 <div class="text-sm">
-                    <div id="scrapers_running" class="flex items-center" hx-get="/check_channels/scrapers_running" hx-trigger="load, every 88888s" hx-target="this">
+                    <div id="scrapers_running" class="flex items-center" 
+                         hx-get="/check_channels/scrapers_running" 
+                         hx-trigger="load, every 88s" 
+                         hx-target="#scrapers_running">
                         <span class="mr-2">Scrapers:</span>
                         <span>Loading...</span>
                     </div>
                 </div>
             </div>
             <div class="mb-4">
-                <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded transition duration-300" hx-post="/trigger_scraping_sequence" hx-target="#orchestration-status">
+                <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded transition duration-300" 
+                        hx-post="/trigger_scraping_sequence" 
+                        hx-target="#orchestration-status">
                     Start Data Ingestion
                 </button>
             </div>
             <div id="orchestration-status" class="mb-4 text-fluorescent-green"></div>
-            
-            
+
+            <!-- Pipeline Management -->
             <div class="grid-container">
                 <div hx-get="/pipeline/scraping" hx-trigger="load"></div>
                 <div hx-get="/pipeline/embedding" hx-trigger="load"></div>
@@ -247,6 +214,7 @@
             <div id="step-status" class="mt-4 text-fluorescent-green"></div>
         </div>
 
+        <!-- Actions -->
         <div class="bg-card rounded-lg p-4 mb-6">
             <h2 class="text-xl font-semibold mb-4">Actions</h2>
             <div class="flex flex-wrap gap-4">
@@ -259,6 +227,7 @@
             </div>
         </div>
 
+        <!-- Prefect Dashboard -->
         <div class="bg-card rounded-lg p-4 mb-6">
             <h2 class="text-xl font-semibold mb-4">Prefect Dashboard</h2>
             <p class="mb-4">If you are using Prefect Cloud, you can't see the dashboard here due to security issues. To observe the orchestration, please log in and visit the dashboard there.</p>
@@ -275,6 +244,7 @@
             </iframe>
         </div>
 
+        <!-- Outward/Irrelevant Articles -->
         <div class="bg-card rounded-lg p-4 mb-6">
             <h2 class="text-xl font-semibold mb-4">Outward/Irrelevant Articles</h2>
             <div id="outward-irrelevant-articles" class="overflow-auto max-h-64 bg-gray-800 p-4 rounded-lg">
@@ -296,6 +266,18 @@
 
         // Refresh every 300 seconds (300000 milliseconds)
         setInterval(refreshPrefectDashboard, 300000);
+    </script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const channelElements = document.querySelectorAll('.channel-value');
+            channelElements.forEach(function(el) {
+                const value = parseInt(el.textContent.trim(), 10);
+                const max = 500;
+                const clampedValue = Math.min(Math.max(value, 0), max);
+                const hue = (120 - (clampedValue / max) * 120); // 120 (green) to 0 (red)
+                el.style.color = `hsl(${hue}, 100%, 50%)`;
+            });
+        });
     </script>
 </body>
 

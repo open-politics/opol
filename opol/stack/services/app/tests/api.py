@@ -1,10 +1,11 @@
 import pytest
+import os
 from opol import OPOL
 
 @pytest.fixture
 def opol_instance():
     # Setup code: create an OPOL instance
-    return OPOL(mode="container")
+    return OPOL(mode=os.getenv("OPOL_MODE"), api_key=os.getenv("OPOL_API_KEY"))
 
 def test_geojson(opol_instance):
     # Use the fixture

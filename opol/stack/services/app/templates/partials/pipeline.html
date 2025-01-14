@@ -2,13 +2,28 @@
     <div class="pipeline-header">
         <h3 class="text-lg font-semibold">{{ pipeline.title }}</h3>
         <div class="flex space-x-2">
-            <button class="bg-green-500 hover:bg-green-600 text-white font-semibold py-1 px-2 rounded text-xs transition duration-300" hx-post="/trigger_pipeline/{{ pipeline_name }}" hx-target="#step-status">Run All Steps</button>
-            <button class="bg-red-500 hover:bg-red-600 text-white font-semibold py-1 px-2 rounded text-xs transition duration-300" hx-post="/flush_redis_channels/{{ pipeline_name }}" hx-target="#step-status">Flush Queues</button>
+            <button class="bg-green-500 hover:bg-green-600 text-white font-semibold py-1 px-2 rounded text-xs transition duration-300" 
+                    hx-post="/trigger_step/{{ pipeline_name }}/run_all_steps" 
+                    hx-target="#step-status">
+                Run All Steps
+            </button>
+            <button class="bg-red-500 hover:bg-red-600 text-white font-semibold py-1 px-2 rounded text-xs transition duration-300" 
+                    hx-post="/flush_redis_channels/{{ pipeline_name }}" 
+                    hx-target="#step-status">
+                Flush Queues
+            </button>
+            <button class="bg-yellow-500 hover:bg-yellow-600 text-white font-semibold py-1 px-2 rounded text-xs transition duration-300" 
+                    hx-post="/toggle_pool" 
+                    hx-target="#pool-status" 
+                    hx-swap="outerHTML">
+                Toggle Pool
+            </button>
         </div>
     </div>
     <div class="pipeline-io">
         <span><i class="fas fa-arrow-right"></i> Input: {{ pipeline.input }}</span>
         <span>Output: {{ pipeline.output }} <i class="fas fa-arrow-right"></i></span>
+        <span id="pool-status">Current Pool: {{ current_pool_type.capitalize() }}</span>
     </div>
     <div class="flow-container mb-4">
         {% for step in pipeline.steps %}
@@ -17,19 +32,27 @@
             <div class="flex items-center space-x-2">
                 <input type="number" id="{{ pipeline_name }}-batch-size" name="batch_size" value="50" min="1" max="100" class="w-16 px-2 py-1 text-xs border rounded bg-gray-700 text-white">
                 <button class="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-1 px-2 rounded text-xs transition duration-300" 
-                    hx-post="/trigger_step/{{ step.name }}" 
-                    hx-target="#step-status"
-                    hx-include="#{{ pipeline_name }}-batch-size">
+                        hx-post="/trigger_step/{{ pipeline_name }}/{{ step.name }}" 
+                        hx-target="#step-status"
+                        hx-include="#{{ pipeline_name }}-batch-size">
                     {{ step.label }}
                 </button>
             </div>
             {% else %}
-            <button class="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-1 px-2 rounded text-xs transition duration-300" hx-post="/trigger_step/{{ step.name }}" hx-target="#step-status">{{ step.label }}</button>
+            <button class="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-1 px-2 rounded text-xs transition duration-300" 
+                    hx-post="/trigger_step/{{ pipeline_name }}/{{ step.name }}" 
+                    hx-target="#step-status">
+                {{ step.label }}
+            </button>
             {% endif %}
         </div>
         {% endfor %}
     </div>
-    <div id="{{ pipeline_name }}-channels" hx-get="/check_channels/{{ pipeline_name }}" hx-trigger="load, every 1s" hx-target="this">
+    <div id="{{ pipeline_name }}-channels" class="overflow-x-auto" 
+         hx-get="/check_channels/{{ pipeline_name }}" 
+         hx-trigger="load, every 1s" 
+         hx-target="#{{ pipeline_name }}-channels">
         Loading...
     </div>
 </div>
+

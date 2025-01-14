@@ -1,0 +1,22 @@
+<div class="flex space-x-4"></div>
+    {% for channel, count in channel_status.items() %}
+    <div class="flex items-center space-x-1">
+        <span>{{ channel }}:</span>
+        <span class="font-semibold channel-value">{{ count }}</span>
+    </div>
+    {% endfor %}
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const channelElements = document.querySelectorAll('.channel-value');
+            channelElements.forEach(function(el) {
+                const value = parseInt(el.textContent.trim(), 10);
+                const max = 500;
+                const clampedValue = Math.min(Math.max(value, 0), max);
+                const hue = (120 - (clampedValue / max) * 120); // 120 (green) to 0 (red)
+                el.style.color = `hsl(${hue}, 100%, 50%)`;
+            });
+        });
+    </script>
+    
+</div>
