@@ -57,12 +57,17 @@ class BaseClient(ABC):
             logger.error(f"Request error occurred: {e} for URL: {full_url}")
             raise
 
-    def post(self, endpoint: str, json: Dict[str, Any] = None) -> Any:
-        headers = {}
+    def post(self, endpoint: str, json: Dict[str, Any] = None, override_base_url: Optional[str] = None, override_headers: Optional[Dict[str, Any]] = None) -> Any:
+        headers = override_headers if override_headers else {}
         if self.api_key:
             headers['apikey'] = self.api_key  
         full_url = self.build_url(endpoint)
+        if override_base_url:
+            full_url = override_base_url + endpoint
         try:
+            print(full_url)
+            print(json)
+            print(headers)
             response = self.client.post(full_url, json=json, headers=headers)
             response.raise_for_status()
             return response.json()

@@ -53,19 +53,26 @@ class Embeddings(BaseClient):
             if self.api_provider == "jina":
                 base_url = "https://api.jina.ai/v1"
                 endpoint = f"/embeddings"
-                params = {
+                data = {
                     "model": "jina-embeddings-v3", 
                     "task": embedding_type,
-                    "input": text
+                    "late_chunking": False,
+                    "dimensions": 1024,
+                    "embedding_type": "float",
+                    "input": [text] if isinstance(text, str) else text
                 }
                 headers = {
-                    "Authorization": f"Bearer {self.api_provider_key}",
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {self.api_provider_key}"
                 }
             else:
                 raise ValueError(f"Unsupported API provider: {self.api_provider}")
             
-            response = self.get(endpoint, headers=headers, params=params, override_base_url=base_url)
+            print(data)
+            print(headers)
+            print(base_url)
+            print(endpoint)
+            response = self.post(endpoint, json=data, override_base_url=base_url, override_headers=headers)
             embeddings = response.get("data", [])
             return embeddings
         else:
