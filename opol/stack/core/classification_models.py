@@ -5,7 +5,7 @@ import json
 
 ## Initial Filter 
 class ContentRelevance(Enum):
-    type: Literal["Relevant", "Irrelevant", "Needs more context
+    type: Literal["Relevant", "Irrelevant", "Needs more context"]
 
 # Comprehensive Evaluation
 class EventType(Enum):
