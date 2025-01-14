@@ -111,13 +111,46 @@ Now you can:
 
 
 ## Service & Flow Orchestration
+
+## General Note
+All date operations need two things, distinct in their needs for operationalising them most efficient:
+- Batch Processing
+- Live Usage
+
+And thus Opol has two interconnected patterns that allow a sytem, bootable from a local machine, to scale high and stay ressource-efficient.
+
+##### Live Usage
+Live Usage is rather easy. Boot up the Docker images with FastAPI servers, build endpoints, request, done.
+Here we will not go into more detail. But to sum up: one part of our stack is the live services.
+
+#### Batch Processing
+Batch procesing is more difficult. Each of the fundmental data operations of an OSINT project is distinct in their dependencies and environment setups. While scraping needs a playwright implementation, embeddings needs the transformer package. And we furthermore might not want to have these dependencies always loaded, they clog our system. They can be incompatible. Well...
+
+*But thats whats docker was invented for right?*
+
+Yes, **but** we want to worry the least we can about booting up the jobs and running these regular data operations. Most regular data operations are loads that can be put into batches, resembling a structure of ETL (Extract, Transform, Load). This is where Prefect comes in.
+
+Prefect is our workflow orchestration tool of choice. It allows us to define, schedule and monitor our data pipelines in a clean and efficient way. With Prefect, we can:
+- Isolate different data operations in separate containers
+- Schedule regular data ingestion and enrichment jobs
+- Monitor the health and performance of our flows
+- Handle retries and failures gracefully
+- Scale our batch processing horizontally (also with Rayclusters)
+
+*Why is this cool?* \
+Because Prefect can handle the automatic booting, flow execution and subsequent cleanup for all our tasks and flows orchestrated that way.
+
+These flows are the backbone of our data pipeline, continuously populating our database with fresh data from various sources and enriching it with embeddings, classifications, and entity information + x coming more operations. The combination of Docker isolation and Prefect orchestration gives us a robust and maintainable system for handling complex OSINT data operations at scale.
+
+*This is also why when you boot up the light version of the stack (and thus no flows are run, no data scraped, engineered and ingested) some core functionalities (like Geojson & scraped entities data) are not availble.*
+
 ### Services
 The opol-services (services, engines & databases) form the backbone of the application, handling functionalities like data scraping, engineering, batch processing and various utitlies centered around opol.
 
-| All these services and packages build services with shared modules from `core`. \
-| Here you can find the shared pydantic models, service-url-mappings, database connections and more.
-
-| The scraped data/ database files are stored in stack/.store
+Notes:
+- All these services and packages build services with shared modules from `core`. 
+   - Here you can find the shared pydantic models, service-url-mappings, database connections and more.
+- The scraped data/ database files are stored in stack/.store
 
 Databases & Queues:
 - PostgreSQL Database (`database-articles`)
