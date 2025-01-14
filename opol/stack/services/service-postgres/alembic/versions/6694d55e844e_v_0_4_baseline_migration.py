@@ -1,8 +1,8 @@
-"""Adding top locations and entities to content
+"""V 0.4 Baseline Migration
 
-Revision ID: 8d5e34d77af3
-Revises: ef87360117c8
-Create Date: 2025-01-10 17:20:27.850103
+Revision ID: 6694d55e844e
+Revises: 4560cd669d19
+Create Date: 2025-01-14 06:13:16.611614
 
 """
 from alembic import op
@@ -14,8 +14,8 @@ from pgvector.sqlalchemy import Vector
 
 
 # revision identifiers, used by Alembic.
-revision = '8d5e34d77af3'
-down_revision = 'ef87360117c8'
+revision = '6694d55e844e'
+down_revision = None
 branch_labels = None
 depends_on = None
 
