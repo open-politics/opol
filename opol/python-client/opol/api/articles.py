@@ -35,7 +35,7 @@ class Articles(BaseClient):
             kwargs['query'] = args[0]
         
         # Just the relative endpoint now
-        endpoint = "contents"  
+        endpoint = "v2/search/contents"  
         request = self.GetArticlesRequest(**kwargs)
         params = {k: v for k, v in request.model_dump(exclude={"pretty"}).items() if v is not None}
 

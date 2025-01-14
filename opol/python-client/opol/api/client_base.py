@@ -39,11 +39,13 @@ class BaseClient(ABC):
         # Use a simple join since we ensured trailing slash on base and no leading slash on endpoint
         return base_url + endpoint
 
-    def get(self, endpoint: str, params: Dict[str, Any] = None) -> Any:
-        headers = {}
+    def get(self, endpoint: str, params: Dict[str, Any] = None, override_base_url: Optional[str] = None, override_headers: Optional[Dict[str, Any]] = None) -> Any:
+        headers = override_headers if override_headers else {}
         if self.api_key:
             headers['apikey'] = self.api_key  
         full_url = self.build_url(endpoint)
+        if override_base_url:
+            full_url = override_base_url + endpoint
         try:
             response = self.client.get(full_url, params=params, headers=headers)
             response.raise_for_status()

@@ -15,39 +15,76 @@ class Embeddings(BaseClient):
     """
     Client to interact with the Embeddings API endpoints.
     """
-    def __init__(self, mode: str, api_key: str = None, timeout: int = 60):
-        super().__init__(mode, api_key=api_key, timeout=timeout, service_name="service-embeddings", port=420)
+    def __init__(self, 
+                mode: str, 
+                api_key: str = None, 
+                timeout: int = 60, 
+                use_api: bool = False, 
+                api_provider: Optional[str] = None, 
+                api_provider_key: Optional[str] = None
+                ):
+        
+        super().__init__(mode, 
+                         api_key=api_key, 
+                         timeout=timeout, 
+                         service_name="service-embeddings", 
+                         port=420)
+        
+        self.use_api = use_api
+        self.api_provider = api_provider
+        self.api_provider_key = api_provider_key
     
     def __call__(self, *args, **kwargs):
-        return self.get_embeddings(*args, **kwargs)
+        return self.generate(*args, **kwargs)
     
     def generate(self, text: Union[str, List[str]], embedding_type: Optional[str] = "separation") -> dict:
         """
         Fetch embeddings for a given text and embedding type.
-
+        
         Args:
-            text (str): The text to generate embeddings for.
+            text (str): The text to generate embeddings for. 
             embedding_type (str): The type of embedding task.
             
         Returns:
             dict: The embeddings for the text.
         """
-        if isinstance(text, str):
-            text = [text]
-        endpoint = f"/embeddings"
-        
-        # Convert string embedding_type to EmbeddingTypes Enum if possible
-        try:
-            embedding_type_enum = EmbeddingTypes(embedding_type)
-        except ValueError:
-            raise ValueError(f"Invalid embedding type: {embedding_type}")
+        if self.use_api and self.api_provider:
+            # Use the specified API provider
+            if self.api_provider == "jina":
+                base_url = "https://api.jina.ai/v1"
+                endpoint = f"/embeddings"
+                params = {
+                    "model": "jina-embeddings-v3", 
+                    "task": embedding_type,
+                    "input": text
+                }
+                headers = {
+                    "Authorization": f"Bearer {self.api_provider_key}",
+                    "Content-Type": "application/json"
+                }
+            else:
+                raise ValueError(f"Unsupported API provider: {self.api_provider}")
+            
+            response = self.get(endpoint, headers=headers, params=params, override_base_url=base_url)
+            embeddings = response.get("data", [])
+            return embeddings
+        else:
+            # Use the local model on the service-embeddings on port 420
+            endpoint = "/embeddings"
+            if isinstance(text, str):
+                text = [text] 
+            try:
+                embedding_type_enum = EmbeddingTypes(embedding_type)
+            except ValueError:
+                raise ValueError(f"Invalid embedding type: {embedding_type}")
 
-        params = {
-            "embedding_type": embedding_type_enum.value,
-            "texts": text
-        }
-        response = self.post(endpoint, json=params)
-        embeddings = response.get("embeddings", [])
+            params = {
+                "embedding_type": embedding_type_enum.value,
+                "texts": text  
+            }
+            response = self.post(endpoint, json=params)
+            embeddings = response.get("embeddings", [])
+        
         return embeddings
     
     def cosine(self, a, b):
