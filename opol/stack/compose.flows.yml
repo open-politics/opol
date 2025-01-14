@@ -13,10 +13,20 @@ services:
     volumes:
       - ./flows:/app/
 
+  generate_embeddings_onebatch:
+    build:
+      context: .
+      dockerfile: ./flows/embeddings/Dockerfile
+    command: ["bash", "start.sh"]
+    env_file:
+      - .env
+    # volumes:
+    #   - ./flows/embeddings:/app/
+
   ## if you need the core package:
   # container_with_core_package:
   #   build: 
-  #     context: . # set to /stack so we can import core in flows from ../../core and even dependencies from other servicews like "COPY services/service-entities/requirements.txt ."
+  #     context: . # set to /stack so we can import core in flows from ../../core and even dependencies from other servicews like "COPY services/service-scraper/requirements.txt ."
   #     dockerfile: ./services/service-scraper/Dockerfile
 
 networks:

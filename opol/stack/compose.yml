@@ -311,5 +311,4 @@ networks:
   default:
     external: false
   opol-app-stack:
-    driver: bridge
     external: true
