@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from datetime import datetime
 from core.adb import get_session
-from core.models import Content, Entity, Location, ContentEvaluation, ContentEntity, ContentChunk, EntityLocation, ContentLocation
+from core.models import Content, Entity, Location, ContentEvaluation, ContentEntity, EntityLocation, ContentLocation
 from core.service_mapping import config
 from .models import SearchType
 from core.utils import logger
@@ -28,7 +28,9 @@ from datetime import datetime
 from sqlalchemy.types import DateTime
 
 from pydantic import BaseModel, field_validator
-
+from opol import OPOL
+import os
+opol = OPOL(mode=os.getenv("OPOL_MODE"), api_key=os.getenv("OPOL_API_KEY"))
 
 router = APIRouter()
 
@@ -131,18 +133,14 @@ async def get_contents(
                 elif search_type == SearchType.SEMANTIC:
                     try:
                         async with httpx.AsyncClient() as client:
-                            response = await client.get(
-                                f"{config.service_urls['service-embeddings']}/generate_query_embeddings",
-                                params={"query": search_query}
-                            )
-                            response.raise_for_status()
-                            query_embeddings = response.json()["embeddings"]
+                            from opol.api.embeddings import EmbeddingTypes
+                            query_embeddings = opol.embeddings.generate(search_query, EmbeddingTypes.QUERY)
                             
                             # Modified query to include the distance in the SELECT list
                             query = (
                                 select(
                                     Content,
-                                    ContentChunk.embeddings.l2_distance(query_embeddings).label('distance')
+                                    Content.embeddings.l2_distance(query_embeddings).label('distance')
                                 )
                                 .options(
                                     selectinload(Content.entities).selectinload(Entity.locations),
@@ -150,7 +148,6 @@ async def get_contents(
                                     selectinload(Content.evaluation),
                                     selectinload(Content.media_details)
                                 )
-                                .join(ContentChunk, Content.id == ContentChunk.content_id)
                                 .order_by('distance')  # Order by the labeled distance
                                 .distinct()
                             )

@@ -21,10 +21,13 @@ from core.models import (
     ContentEvaluation,
     ContentEntity,
     EntityLocation,
-    ContentChunk
 )
 from core.service_mapping import config
 from core.utils import logger
+
+from opol import OPOL
+import os
+opol = OPOL(mode=os.getenv("OPOL_MODE"), api_key=os.getenv("OPOL_API_KEY"))
 
 router = APIRouter()
 
@@ -149,12 +152,13 @@ def apply_search_filters(query, search_query: Optional[str], search_type: Search
         )
         return query.where(search_condition)
     elif search_type.lower() == 'semantic':
-        embeddings = asyncio.run(get_semantic_embeddings(search_query))
+        from opol.api.embeddings import EmbeddingTypes
+        embeddings = opol.embeddings.generate(search_query, EmbeddingTypes.QUERY)
         # Modify the query to include distance calculation
         return (
             select(
                 Content,
-                ContentChunk.embeddings.l2_distance(embeddings).label('distance')
+                Content.embeddings.l2_distance(embeddings).label('distance')
             )
             .options(
                 selectinload(Content.entities).selectinload(Entity.locations),
@@ -162,7 +166,6 @@ def apply_search_filters(query, search_query: Optional[str], search_type: Search
                 selectinload(Content.evaluation),
                 selectinload(Content.media_details)
             )
-            .join(ContentChunk, Content.id == ContentChunk.content_id)
             .order_by('distance')
             .distinct()
         )

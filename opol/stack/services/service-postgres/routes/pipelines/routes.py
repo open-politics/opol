@@ -32,7 +32,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from core.adb import engine, get_session, create_db_and_tables
 from core.middleware import add_cors_middleware
-from core.models import Content, ContentEntity, Entity, Location, Tag, ContentEvaluation, EntityLocation, ContentTag, ContentChunk, MediaDetails, Image, TopContentEntity, TopContentLocation
+from core.models import Content, ContentEntity, Entity, Location, Tag, ContentEvaluation, EntityLocation, ContentTag, MediaDetails, Image, TopContentEntity, TopContentLocation
 from core.service_mapping import config
 from core.utils import logger
 from core.service_mapping import get_redis_url
@@ -103,7 +103,6 @@ async def create_embedding_jobs(session: AsyncSession = Depends(get_session)):
     logger.info("Trying to create embedding jobs.")
     try:
         async with session.begin():
-            # Modified query to select contents that have no chunks with embeddings
             query = select(Content).where(Content.embeddings == None)
             result = await session.execute(query)
             contents_without_embeddings = result.scalars().all()
@@ -154,9 +153,9 @@ async def store_contents_with_embeddings(session: AsyncSession = Depends(get_ses
                     content_data = json.loads(content_json)
                     logger.info(f"Processing content {index}/{len(contents_with_embeddings)}: {content_data.get('url')}")
 
-                    # Find the content by URL and eagerly load the chunks
+                    # Find the content by URL and eagerly load the content
                     result = await session.execute(
-                        select(Content).options(selectinload(Content.chunks)).where(Content.url == content_data['url'])
+                        select(Content).where(Content.url == content_data['url'])
                     )
                     content = result.scalar_one_or_none()
 
@@ -164,26 +163,7 @@ async def store_contents_with_embeddings(session: AsyncSession = Depends(get_ses
                         # Update the overall content embeddings
                         content.embeddings = content_data.get('embeddings')
 
-                        # Handle chunks
-                        for chunk_data in content_data.get('chunks', []):
-                            chunk_data['content_id'] = content.id  # Associate with the content
-                            chunk_number = chunk_data['chunk_number']
-                            # Check if chunk exists
-                            existing_chunk = await session.execute(
-                                select(ContentChunk).where(
-                                    ContentChunk.content_id == content.id,
-                                    ContentChunk.chunk_number == chunk_number
-                                )
-                            )
-                            existing_chunk = existing_chunk.scalar_one_or_none()
-                            if existing_chunk:
-                                for key, value in chunk_data.items():
-                                    setattr(existing_chunk, key, value)
-                                logger.info(f"Updated existing chunk number {chunk_number} for content {content.url}")
-                            else:
-                                chunk = ContentChunk(**chunk_data)
-                                session.add(chunk)
-                                logger.info(f"Added new chunk number {chunk_number} for content {content.url}")
+                        session.add(content)
 
                 except ValidationError as e:
                     logger.error(f"Validation error for content: {e}")
@@ -266,9 +246,9 @@ async def store_contents_with_entities(session: AsyncSession = Depends(get_sessi
                     content_data = json.loads(content_json)
                     logger.info(f"Processing content {index}/{len(contents)}: {content_data['url']}")
 
-                    # Find the content by URL and eagerly load the chunks
+                    # Find the content by URL
                     result = await session.execute(
-                        select(Content).options(selectinload(Content.chunks)).where(Content.url == content_data['url'])
+                        select(Content).where(Content.url == content_data['url'])
                     )
                     content = result.scalar_one_or_none()
 
