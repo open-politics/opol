@@ -5,9 +5,8 @@ WORKDIR /app
 ENV UV_SYSTEM_PYTHON=1
 
 # Install only necessary packages and clean up
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl git && \
-    rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y curl git && \
+    pip install uv
 
 # Install Python dependencies
 COPY services/service-embeddings/requirements.txt .
