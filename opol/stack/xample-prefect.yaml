@@ -1,6 +1,16 @@
 name: opol-flows
 prefect-version: 3.10.0
 
+
+## This is pretty much what our production prefect.yaml looks like. 
+## The only difference is that in production we use a different infra (kubernetes)
+## In our actual deployment the pool is thus "kubernetes-pool-prod"
+## Generally, for your understanding on prefect: it doesn't actually matter where that pool is. The worker just provisions the containers specified here.
+## BUT in our setup this is not 1:1 possible. We are not fully decoupled in that containers still need to reach other conrtainers and that data is passed via redisu queues.
+## So for opol we can't choose ANY infra. We can choose infra that the rest of our stack is depoyed on and where containers can call each other by name.
+## To correctly target the correct ports the core/service_mapping builds dynamic urls to reach the services. 
+## In the python-client/main we have a similar hack to call the correct url (e.g. on docker: host + port while on kubernetes it's just host)
+
 pull: 
   - prefect.deployments.steps.git_clone:
       repository: https://github.com/open-politics/opol.git
