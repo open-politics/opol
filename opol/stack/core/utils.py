@@ -38,7 +38,7 @@ class UUIDEncoder(json.JSONEncoder):
 class DimensionRequestEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, (BaseModel, DimensionRequest)):
-            return obj.dict()
+            return obj.model_dump()
         if isinstance(obj, UUID):
             return str(obj)
         return json.JSONEncoder.default(self, obj)

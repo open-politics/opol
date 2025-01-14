@@ -65,7 +65,7 @@ class Content(BaseModel, table=True):
     meta_summary: Optional[str] = Field(default=None, sa_column=Column(Text))
 
     # Embeddings at the content level
-    embeddings: Optional[List[float]] = Field(default=None, sa_column=Column(Vector(384)))
+    embeddings: Optional[List[float]] = Field(default=None, sa_column=Column(Vector(1024)))
 
     # Separate Relationships
     entities: List["Entity"] = Relationship(
@@ -86,7 +86,7 @@ class Content(BaseModel, table=True):
         back_populates="content", sa_relationship_kwargs={"uselist": False}
     )
     tags: List["Tag"] = Relationship(back_populates="contents", link_model=ContentTag)
-    chunks: List["ContentChunk"] = Relationship(back_populates="content")
+
 
     topics: List["Topic"] = Relationship(back_populates="contents", link_model=ContentTopic)
 
@@ -98,8 +98,8 @@ class Content(BaseModel, table=True):
 
 
 class MediaDetails(SQLModel, table=True):
-    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    content_id: uuid.UUID = Field(foreign_key="content.id")
+    id: Optional[uuid.UUID] = Field(default_factory=uuid.uuid4, primary_key=True)
+    content_id: Optional[uuid.UUID] = Field(foreign_key="content.id")
     duration: Optional[float] = Field(default=None)  # For audio and video
     transcribed_text: Optional[str] = Field(default=None, sa_column=Column(Text))  # For audio and video
     captions: Optional[str] = Field(default=None, sa_column=Column(Text))  # For videos
@@ -111,7 +111,7 @@ class MediaDetails(SQLModel, table=True):
     images: Optional[List["Image"]] = Relationship(back_populates="media_details")
 
 class VideoFrame(SQLModel, table=True):
-    media_details_id: uuid.UUID = Field(foreign_key="mediadetails.id", primary_key=True)
+    media_details_id: Optional[uuid.UUID] = Field(foreign_key="mediadetails.id", primary_key=True)
     frame_number: int = Field(primary_key=True)
     frame_url: str = Field(unique=True, index=True)
     timestamp: float = Field(index=True)
@@ -130,15 +130,15 @@ class Image(SQLModel, table=True):
     # Relationships
     media_details: MediaDetails = Relationship(back_populates="images")
 
-class ContentChunk(SQLModel, table=True):
-    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    content_id: uuid.UUID = Field(foreign_key="content.id", index=True)
-    chunk_number: int = Field(index=True)
-    text: str = Field(sa_column=Column(Text))
-    embeddings: Optional[List[float]] = Field(default=None, sa_column=Column(Vector(384)))
+# class ContentChunk(SQLModel, table=True):
+#     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+#     content_id: uuid.UUID = Field(foreign_key="content.id", index=True)
+#     chunk_number: int = Field(index=True)
+#     text: str = Field(sa_column=Column(Text))
+#     embeddings: Optional[List[float]] = Field(default=None, sa_column=Column(Vector(384)))
 
-    # Relationships
-    content: Content = Relationship(back_populates="chunks")
+#     # Relationships
+#     content: Content = Relationship(back_populates="chunks")
 
 class Entity(BaseModel, table=True):
     name: str = Field(index=True)
