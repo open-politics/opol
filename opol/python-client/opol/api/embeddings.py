@@ -55,7 +55,7 @@ class Embeddings(BaseClient):
                 endpoint = f"/embeddings"
                 data = {
                     "model": "jina-embeddings-v3", 
-                    "task": embedding_type,
+                    "task": EmbeddingTypes(embedding_type).value,
                     "late_chunking": False,
                     "dimensions": 1024,
                     "embedding_type": "float",
@@ -102,6 +102,7 @@ class Embeddings(BaseClient):
                passages: List[str],
                lean: bool = False
                ) -> Union[List[Dict[str, Union[str, float, int]]], List[int]]:
+        
         query_embedding = self.generate(query, embedding_type="separation")
         passages_embeddings = self.generate(passages, embedding_type="separation")
 
