@@ -69,7 +69,7 @@ class Embeddings(BaseClient):
                 raise ValueError(f"Unsupported API provider: {self.api_provider}")
             
             response = self.post(endpoint, json=data, override_base_url=base_url, override_headers=headers)
-            embedding = response['data'][0]['embedding'].tolist()   
+            embedding = response['data'][0]['embedding']
             return embedding
         else:
             # Use the local model on the service-embeddings on port 420
