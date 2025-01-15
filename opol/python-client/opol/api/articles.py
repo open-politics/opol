@@ -37,8 +37,7 @@ class Articles(BaseClient):
     def __call__(self, *args, **kwargs):
         if args:
             kwargs['search_query'] = args[0]
-        print(kwargs)
-        return self.get_articles(*args, **kwargs)
+            return self.get_articles(*args, **kwargs)
     
     class GetArticlesRequest(BaseModel):
         search_query: str
@@ -55,10 +54,8 @@ class Articles(BaseClient):
         if args and 'search_query' not in kwargs:
             kwargs['search_query'] = args[0]
         endpoint = "v2/search/contents"  
-        print(kwargs)
         request = self.GetArticlesRequest(**kwargs)
         params = {k: v for k, v in request.model_dump().items() if v is not None}
-        print(params)
         return self.get(endpoint, params)
 
     def by_entity(self, entity_name: str, skip: int = 0, limit: int = 10) -> Dict:
