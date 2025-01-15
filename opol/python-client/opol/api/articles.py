@@ -36,25 +36,29 @@ class Articles(BaseClient):
 
     def __call__(self, *args, **kwargs):
         if args:
-            kwargs['query'] = args[0]
+            kwargs['search_query'] = args[0]
+        print(kwargs)
         return self.get_articles(*args, **kwargs)
     
     class GetArticlesRequest(BaseModel):
-        query: str
+        search_query: str
         limit: Optional[int] = 10
         from_date: Optional[str] = None
         to_date: Optional[str] = None
+        search_type: Optional[str] = "semantic"
 
     class GetArticlesResponse(BaseModel):
         contents: List[Dict]
         total: int
 
     def get_articles(self, *args, **kwargs) -> GetArticlesResponse:
-        if args and 'query' not in kwargs:
-            kwargs['query'] = args[0]
+        if args and 'search_query' not in kwargs:
+            kwargs['search_query'] = args[0]
         endpoint = "v2/search/contents"  
-        request = ContentsQueryParams(**kwargs)
+        print(kwargs)
+        request = self.GetArticlesRequest(**kwargs)
         params = {k: v for k, v in request.model_dump().items() if v is not None}
+        print(params)
         return self.get(endpoint, params)
 
     def by_entity(self, entity_name: str, skip: int = 0, limit: int = 10) -> Dict:
