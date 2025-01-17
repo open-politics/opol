@@ -55,7 +55,7 @@ class DocumentManager(BaseClient):
         
         payload = IngestDocsRequest(documents=documents, overwrite=overwrite)
         
-        endpoint = "/v2/documents/ingest"
+        endpoint = "api/v2/documents/ingest"
 
         try:
             response = self.post(endpoint, json=payload.model_dump())
@@ -97,7 +97,7 @@ class DocumentManager(BaseClient):
         
         payload = ReadDocsRequest(ids=ids, urls=urls)
         
-        endpoint = "/v2/documents/read"
+        endpoint = "api/v2/documents/read"
         try:
             response = self.post(endpoint, json=payload.model_dump())
             _documents = response.get("documents")
@@ -123,7 +123,7 @@ class DocumentManager(BaseClient):
         
         payload = DeleteDocsRequest(DocumentId=id, DocumentUrl=url)
             
-        endpoint = "/v2/documents/delete"
+        endpoint = "api/v2/documents/delete"
         try:
             response = self.post(endpoint, json=payload.model_dump())
             return response

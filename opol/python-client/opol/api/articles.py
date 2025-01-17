@@ -53,12 +53,12 @@ class Articles(BaseClient):
     def get_articles(self, *args, **kwargs) -> GetArticlesResponse:
         if args and 'search_query' not in kwargs:
             kwargs['search_query'] = args[0]
-        endpoint = "v2/search/contents"  
+        endpoint = "api/v2/search/contents"  
         request = self.GetArticlesRequest(**kwargs)
         params = {k: v for k, v in request.model_dump().items() if v is not None}
         return self.get(endpoint, params)
 
     def by_entity(self, entity_name: str, skip: int = 0, limit: int = 10) -> Dict:
-        endpoint = f"v2/contents_by_entity/{entity_name}"
+        endpoint = f"api/v2/search/contents_by_entity/{entity_name}"
         params = {"skip": skip, "limit": limit}
         return self.get(endpoint, params)
