@@ -12,15 +12,15 @@ class Entities(BaseClient):
         return self.get_entities(*args, **kwargs)
     
     def get_entities(self, query: str, skip: int = 0, limit: int = 50) -> dict:
-        endpoint = f"v2/related_entities/{query}"
+        endpoint = f"api/v2/search/related_entities/{query}"
         params = {"skip": skip, "limit": limit}
         return self.get(endpoint, params)
     
     def by_id(self, entity_id: str) -> dict:
-        endpoint = f"v2/entities/{entity_id}"
+        endpoint = f"api/v2/search/entities/{entity_id}"
         return self.get(endpoint)
 
     def by_entity(self, entity_name: str, skip: int = 0, limit: int = 50) -> dict:
-        endpoint = f"v2/related_entities/{entity_name}"
+        endpoint = f"api/v2/search/related_entities/{entity_name}"
         params = {"skip": skip, "limit": limit}
         return self.get(endpoint, params)
