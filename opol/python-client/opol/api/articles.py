@@ -48,7 +48,7 @@ class Articles(BaseClient):
 
     class GetArticlesResponse(BaseModel):
         contents: List[Dict]
-        total: int
+
 
     def get_articles(self, *args, **kwargs) -> GetArticlesResponse:
         if args and 'search_query' not in kwargs:

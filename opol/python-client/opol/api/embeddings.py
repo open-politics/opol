@@ -1,6 +1,7 @@
 from typing import Dict, List, Union, Optional
 from .client_base import BaseClient
 import numpy as np
+from pydantic import BaseModel
 from enum import Enum
 
 # Define EmbeddingTypes Enum
@@ -91,6 +92,10 @@ class Embeddings(BaseClient):
         return embeddings
     
     def cosine(self, a, b):
+        # Debugging statements to check input shapes and types
+        print(f"Type of a: {type(a)}, Shape of a: {np.shape(a)}")
+        print(f"Type of b: {type(b)}, Shape of b: {np.shape(b)}")
+        
         return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
     
     def rerank(self, 
@@ -101,54 +106,23 @@ class Embeddings(BaseClient):
         
         query_embedding = self.generate(query, embedding_type="separation")
         passages_embeddings = self.generate(passages, embedding_type="separation")
+        # [0.056315333, -0.086833455, 0.010324996]
 
-        ranked_vectors = sorted(
-            [{"content": passages[i], "similarity": self.cosine(query_embedding, vector), "index": i} for i, vector in enumerate(passages_embeddings)],
-            key=lambda x: x["similarity"],
-            reverse=True
-        )
+        class ReRankedObject(BaseModel):
+            index: int
+            similarity: float
+            passage: Optional[str]
 
-        if lean:
-            return [item["index"] for item in ranked_vectors]
-        return ranked_vectors
-    
-    def rerank_articles(self, 
-               query: str, 
-               articles: List[Dict], 
-               query_emb_type: str = "retrieval.query", 
-               articles_emb_type: str = "retrieval.passage", 
-               text_field: str = "title",
-               lean: bool = False
-               ) -> Union[List[Dict[str, Union[Dict, float]]], List[int]]:
-        """
-        Reranks articles based on the cosine similarity of their embeddings to the query embedding.
+        class ReRankResults(BaseModel):
+            query: str
+            length: int
+            ranked_passages: List[ReRankedObject]
 
-        Args:
-            query_embedding (List[float]): The embedding of the query.
-            articles (List[Dict]): List of articles to rerank.
-            text_field (str): The article field to embed ('title', 'content', or 'both').
+        ranked_passages = [ReRankedObject(passage=passages[i], similarity=self.cosine(query_embedding, vector), index=i) for i, vector in enumerate(passages_embeddings)]
 
-        Returns:
-            List[Dict[str, Union[Dict, float]]]: Sorted list of dictionaries containing articles and their similarity scores.
-        """
-        if text_field == "title":
-            texts = [article.title for article in articles]
-        elif text_field == "content":
-            texts = [article.content[:300] for article in articles]
-        elif text_field == "both":
-            texts = [f"{article.title}\n{article.content[:300]}" for article in articles]
-        else:
-            raise ValueError("Invalid text_field value. Choose 'title', 'content', or 'both'.")
-
-        query_embedding = self.generate(query, embedding_type=query_emb_type)
-        article_embeddings = [self.generate(text, embedding_type=articles_emb_type) for text in texts]
-
-        ranked_articles = sorted(
-            [{"article": article, "similarity": self.cosine(query_embedding, embedding)} for article, embedding in zip(articles, article_embeddings)],
-            key=lambda x: x["similarity"],
-            reverse=True
-        )
+        ranked_passages.sort(key=lambda x: x.similarity, reverse=True)
 
         if lean:
-            return [articles.index(item["article"]) for item in ranked_articles]
-        return ranked_articles
+            return ReRankResults(query=query, length=len(passages), ranked_passages=[item.index for item in ranked_passages])
+        return ReRankResults(query=query, length=len(passages), ranked_passages=ranked_passages)
+
