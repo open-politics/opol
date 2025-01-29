@@ -58,7 +58,9 @@ class Articles(BaseClient):
         params = {k: v for k, v in request.model_dump().items() if v is not None}
         return self.get(endpoint, params)
 
-    def by_entity(self, entity_name: str, skip: int = 0, limit: int = 10) -> Dict:
-        endpoint = f"api/v2/search/contents_by_entity/{entity_name}"
+    def by_entity(self, entity: str, date: Optional[str] = None, skip: Optional[int] = 0, limit: Optional[int] = 10) -> Dict:
+        endpoint = f"api/v2/search/contents/by_entity/{entity}"
         params = {"skip": skip, "limit": limit}
+        if date:
+            params["date"] = date
         return self.get(endpoint, params)

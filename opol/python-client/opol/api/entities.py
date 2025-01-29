@@ -21,6 +21,6 @@ class Entities(BaseClient):
         return self.get(endpoint)
 
     def by_entity(self, entity_name: str, skip: int = 0, limit: int = 50) -> dict:
-        endpoint = f"api/v2/search/related_entities/{entity_name}"
+        endpoint = f"api/v2/search/entities/by_entity/{entity_name}"
         params = {"skip": skip, "limit": limit}
         return self.get(endpoint, params)
