@@ -17,7 +17,7 @@ class Geo(BaseClient):
         return self.by_id(*args, **kwargs)
     
     def json_by_event(self, event_type: str, limit: Optional[int] = 100, pretty: Optional[bool] = False) -> dict:
-        endpoint = f"geojson_events/{event_type}?limit={limit}"
+        endpoint = f"dynamic_geojson?event_type={event_type}&limit={limit}"
         if pretty:
             response = self.get(endpoint)
             print(json.dumps(response, indent=4))
@@ -30,7 +30,7 @@ class Geo(BaseClient):
         return self.get(endpoint)
 
     def get_geojson(self, type: str = "Politics") -> dict:
-        endpoint = f"geojson_events/{type}"
+        endpoint = f"dynamic_geojson?event_type={type}&limit=100"
         return self.get(endpoint)
     
     def by_id(self, ids: List[str], pretty: bool = False) -> dict:
