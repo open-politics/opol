@@ -28,10 +28,20 @@ opol/textgrad
 backups/
 credentials/
 commands.sh
+commands2.sh
 helm/values.yaml
 z_dev_scripts
 prefect.yaml
 prefect-k8s.yaml
+open-politics/charts/open-politics-webapp/values.yaml
 
 opol/opol/stack/services.sh
 opol/opol/stack/flows.sh
+
+flows/classification/results/
+
+versions_x/
+
+compose.utils.yml
+
+scripts/
