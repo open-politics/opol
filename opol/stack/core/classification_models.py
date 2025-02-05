@@ -4,14 +4,19 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 import json
 
 ## Initial Filter 
-class ContentRelevance(Enum):
+class ContentRelevance(BaseModel):
     type: Literal["Relevant", "Irrelevant", "Needs more context"]
 
-# Comprehensive Evaluation
-class EventType(Enum):
-    type: Literal["Protests", "Elections", "Economic", "Legal", "Social", "Crisis", "War", "Peace", "Diplomacy", "Technology", "Science", "Culture", "Sports", "Other"]
+# Event Evaluation
+class EventType(BaseModel):
+    """
+    Event types for content classification.
+    These are the main event types that can be used to classify content.
+    It is only of these labels. Criteria:
+    """
+    type: Literal["Politics", "Protests", "Elections", "Economic", "Legal", "Social", "Crisis", "War", "Peace", "Diplomacy", "Technology", "Science", "Culture", "Sports", "Other"]
 
-class RhetoricType(Enum):
+class RhetoricType(BaseModel):
     type: Literal["Aggressive", "Persuasive", "Informative", "Emotional", "Neutral", "Other"]
 
 class ContentEvaluation(BaseModel):
@@ -51,4 +56,4 @@ class ContentEvaluation(BaseModel):
 
     # Override the default JSON serialization method
     def to_json(self):
-        return json.dumps(self.dict(), default=lambda o: o.value if isinstance(o, Enum) else o)
+        return json.dumps(self.model_dump(), default=lambda o: o.value if isinstance(o, Enum) else o)

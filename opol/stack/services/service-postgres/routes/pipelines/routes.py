@@ -32,10 +32,12 @@ from sqlalchemy.dialects.postgresql import insert
 
 from core.adb import engine, get_session, create_db_and_tables
 from core.middleware import add_cors_middleware
-from core.models import Content, ContentEntity, Entity, Location, Tag, ContentEvaluation, EntityLocation, ContentTag, MediaDetails, Image, TopContentEntity, TopContentLocation
+from core.models import Content, ContentEntity, Entity, Location, Tag, ContentEvaluation, EntityLocation, ContentTag, MediaDetails, Image, ContentLocation
 from core.service_mapping import config
 from core.utils import logger
 from core.service_mapping import get_redis_url
+
+from datetime import datetime, timezone
 
 ## Setup 
 # App API Router
@@ -57,43 +59,104 @@ async def produce_flags():
     return {"message": f"Flags produced: {', '.join(flags)}"}
 
 @router.post("/store_raw_contents")
-async def store_raw_contents(session: AsyncSession = Depends(get_session)):
+async def store_raw_contents(
+    session: AsyncSession = Depends(get_session),
+    overwrite: bool = True
+):
+    """
+    Ingest raw contents from Redis and store them in PostgreSQL.
+    If 'overwrite' is True, update existing content with the same URL.
+    Otherwise skip if content already exists.
+    """
     try:
+        logger.info("Starting to store raw contents.")
+
         redis_conn = await Redis.from_url(get_redis_url(), db=1, decode_responses=True)
         raw_contents = await redis_conn.lrange('raw_contents_queue', 0, -1)
+        logger.info(f"Fetched {len(raw_contents)} raw contents from Redis.")
         contents = [json.loads(content) for content in raw_contents]
-        
+
         async with session.begin():
             for content_data in contents:
-                # Check if the URL already exists
-                existing_content = await session.execute(
-                    select(Content).where(Content.url == content_data['url'])
-                )
-                if existing_content.scalar_one_or_none():
-                    logger.info(f"Content with URL {content_data['url']} already exists. Skipping insertion.")
-                    continue
+                url = content_data.get('url')
+                logger.debug(f"Processing content with URL: {url}")
 
-                content = Content(**content_data)
-                media_details = content_data.get('media_details')
-                if media_details:
-                    media_details_obj = MediaDetails(
-                        top_image=media_details.get('top_image'),
-                        images=[Image(image_url=img) for img in media_details.get('images', [])]
+                # Check if the URL already exists
+                result = await session.execute(
+                    select(Content).where(Content.url == url)
+                )
+                existing_content = result.scalar_one_or_none()
+
+                if existing_content:
+                    logger.info(f"Content with URL {url} found in database.")
+                    if overwrite:
+                        logger.info(f"Overwriting content with URL {url}.")
+                        # Overwrite fields on the existing record
+                        existing_content.text_content = content_data.get('text_content')
+                        existing_content.last_updated = datetime.now(timezone.utc).isoformat()
+                        existing_content.summary = content_data.get('summary')
+                        existing_content.meta_summary = content_data.get('meta_summary')
+
+                        # Overwrite or update media details if provided
+                        # Create a new MediaDetails object if any images/top_image are present
+                        if content_data.get('images') or content_data.get('top_image'):
+                            media_details_obj = MediaDetails(
+                                top_image=content_data.get('top_image'),
+                                images=[Image(image_url=img) for img in content_data.get('images', [])]
+                            )
+                            # Assign the new media details to the existing content
+                            existing_content.media_details = media_details_obj
+                        else:
+                            # Optionally clear media details if desired
+                            existing_content.media_details = None
+                    else:
+                        # Not overwriting; skip ingestion
+                        logger.info(f"Skip existing content (no overwrite) for URL {url}.")
+                        continue
+                else:
+                    # Create a new Content if none exist for this URL
+                    new_content = Content(
+                        url=content_data['url'],
+                        title=content_data.get('title'),
+                        text_content=content_data.get('text_content'),
+                        source=content_data.get('source'),
+                        summary=content_data.get('summary'),
+                        meta_summary=content_data.get('meta_summary'),
+                        publication_date=content_data.get('publish_date'),
+                        author=", ".join(content_data.get('authors', [])) if 'authors' in content_data else None
                     )
-                    content.media_details = media_details_obj
-                session.add(content)
-                await session.flush()
-        
+
+                    # Add media details if present
+                    if content_data.get('images') or content_data.get('top_image'):
+                        media_details_obj = MediaDetails(
+                            top_image=content_data.get('top_image'),
+                            images=[Image(image_url=img) for img in content_data.get('images', [])]
+                        )
+                        new_content.media_details = media_details_obj
+
+                    session.add(new_content)
+                    await session.flush()
+                    logger.info(f"Created new content record for URL: {url}")
+
         await session.commit()
+        logger.info("Session committed successfully.")
+
+        # Trim the processed contents from Redis
         await redis_conn.ltrim('raw_contents_queue', len(raw_contents), -1)
+        logger.info("Trimmed processed contents from Redis queue.")
         await redis_conn.close()
+        logger.info("Closed Redis connection.")
+
         return {"message": "Raw contents processed successfully."}
+
     except Exception as e:
-        logger.error(f"Error processing contents: {e}")
+        logger.error(f"Error processing contents: {e}", exc_info=True)
         await session.rollback()
+        logger.info("Session rollback due to error.")
         raise HTTPException(status_code=400, detail=str(e))
     finally:
         await session.close()
+        logger.info("Session closed.")
 
 ########################################################################################
 ## 2. EMBEDDING PIPELINE
@@ -232,138 +295,125 @@ async def create_entity_extraction_jobs(session: AsyncSession = Depends(get_sess
 
 
 @router.post("/store_contents_with_entities")
-async def store_contents_with_entities(session: AsyncSession = Depends(get_session)):
+async def store_contents_with_entities(
+    session: AsyncSession = Depends(get_session)
+):
+    logger.info("Starting store_contents_with_entities function (no embeddings).")
+    redis_conn = await Redis.from_url(get_redis_url(), db=2, decode_responses=True)
+    contents_json_array = await redis_conn.lrange('contents_with_entities_queue', 0, -1)
+    logger.info(f"Retrieved {len(contents_json_array)} contents from Redis queue")
+
     try:
-        logger.info("Starting store_contents_with_entities function")
-        redis_conn = await Redis.from_url(get_redis_url(), db=2, decode_responses=True)
-        logger.info(f"Connected to Redis on port {config.REDIS_PORT}, db 2")
-        contents = await redis_conn.lrange('contents_with_entities_queue', 0, -1)
-        logger.info(f"Retrieved {len(contents)} contents from Redis queue")
-        
         async with session.begin():
-            for index, content_json in enumerate(contents, 1):
-                try:
-                    content_data = json.loads(content_json)
-                    logger.info(f"Processing content {index}/{len(contents)}: {content_data['url']}")
+            for idx, content_json in enumerate(contents_json_array, 1):
+                content_data = json.loads(content_json)
+                logger.info(f"Processing content {idx}/{len(contents_json_array)}: {content_data.get('url')}")
 
-                    # Find the content by URL
-                    result = await session.execute(
-                        select(Content).where(Content.url == content_data['url'])
+                # Locate content by URL
+                result = await session.execute(
+                    select(Content).where(Content.url == content_data.get('url'))
+                )
+                content = result.scalar_one_or_none()
+
+                if not content:
+                    logger.error(f"Content not found in DB: {content_data.get('url')}")
+                    continue
+
+                # Store Entities in ContentEntity table
+                entities_data = content_data.get('entities', [])
+                for entity_obj in entities_data:
+                    entity_name = entity_obj.get('text')
+                    entity_type = entity_obj.get('tag')
+                    is_top_flag = entity_obj.get('is_top', False)
+
+                    # Upsert into Entity
+                    stmt_entity = select(Entity).where(Entity.name == entity_name)
+                    entity_result = await session.execute(stmt_entity)
+                    entity = entity_result.scalar_one_or_none()
+
+                    if not entity:
+                        entity = Entity(name=entity_name, entity_type=entity_type if entity_type else "Unknown")
+                        session.add(entity)
+                        await session.flush()
+
+                    # Upsert into ContentEntity pivot
+                    stmt_content_entity = insert(ContentEntity).values(
+                        content_id=content.id,
+                        entity_id=entity.id,
+                        frequency=1,
+                        is_top=is_top_flag
+                    ).on_conflict_do_update(
+                        index_elements=['content_id', 'entity_id'],
+                        set_={
+                            'frequency': ContentEntity.frequency + 1,
+                            'is_top': True if is_top_flag else ContentEntity.is_top
+                        }
                     )
-                    content = result.scalar_one_or_none()
+                    await session.execute(stmt_content_entity)
 
-                    if content:
-                        # Update the overall content embeddings
-                        content.embeddings = content_data.get('embeddings')
-
-                        # Handle entities
-                        if 'entities' in content_data:
-                            # Get the content id
-                            content_id = content.id
-                            
-                            for entity_data in content_data['entities']:
-                                # Get or create Entity
-                                entity_stmt = select(Entity).where(
-                                    Entity.name == entity_data['text'],
+                # Cross-check the top_entities array
+                top_entity_names = set(content_data.get('top_entities', []))
+                if top_entity_names:
+                    logger.debug("Marking top entities from top_entities list.")
+                    for top_e_name in top_entity_names:
+                        stmt = select(Entity).where(Entity.name == top_e_name)
+                        entity_res = await session.execute(stmt)
+                        existing_top_e = entity_res.scalar_one_or_none()
+                        if existing_top_e:
+                            # Mark that pivot as is_top
+                            update_stmt = (
+                                update(ContentEntity)
+                                .where(
+                                    ContentEntity.content_id == content.id,
+                                    ContentEntity.entity_id == existing_top_e.id
                                 )
-                                result = await session.execute(entity_stmt)
-                                entity = result.scalar_one_or_none()
+                                .values(is_top=True)
+                            )
+                            await session.execute(update_stmt)
 
-                                if not entity:
-                                    entity = Entity(name=entity_data['text'], entity_type=entity_data['tag'])
-                                    session.add(entity)
-                                    await session.flush()  # Populate `entity.id`
-                            
+                # Store Locations in ContentLocation table
+                location_names = content_data.get('locations', [])
+                top_location_names = set(content_data.get('top_locations', []))
+                for loc_name in location_names:
+                    # Upsert or retrieve location
+                    stmt_loc = select(Location).where(Location.name == loc_name)
+                    loc_result = await session.execute(stmt_loc)
+                    location = loc_result.scalar_one_or_none()
 
-                                # Upsert ContentEntity
-                                upsert_stmt = insert(ContentEntity).values(
-                                    content_id=content_id,
-                                    entity_id=entity.id,
-                                    frequency=1
-                                ).on_conflict_do_update(
-                                    index_elements=['content_id', 'entity_id'],
-                                    set_={'frequency': ContentEntity.frequency + 1}
-                                )
-                                await session.execute(upsert_stmt)
+                    if not location:
+                        location = Location(name=loc_name)
+                        session.add(location)
+                        await session.flush()
 
-                        # Handle top entities
-                        if 'top_entities' in content_data:
-                            top_entities = content_data['top_entities']
-                            for entity_name in top_entities:
-                                entity_stmt = select(Entity).where(Entity.name == entity_name)
-                                result = await session.execute(entity_stmt)
-                                entity = result.scalar_one_or_none()
-                                
-                                if not entity:
-                                    entity = Entity(name=entity_name, entity_type="unknown")
-                                    session.add(entity)
-                                    await session.flush()
-                                
-                                # Check if the top content entity already exists
-                                existing_top_content_entity = await session.execute(
-                                    select(TopContentEntity).where(
-                                        TopContentEntity.content_id == content.id,
-                                        TopContentEntity.entity_id == entity.id
-                                    )
-                                )
-                                if existing_top_content_entity.scalar_one_or_none():
-                                    logger.info(f"TopContentEntity for content {content.url} and entity {entity.name} already exists. Skipping insertion.")
-                                    continue
-
-                                # Insert new top content entity
-                                content_entity = TopContentEntity(content_id=content.id, entity_id=entity.id)
-                                session.add(content_entity)
-
-                        # Handle top locations
-                        if 'top_locations' in content_data:
-                            top_locations = content_data['top_locations']
-                            for location_name in top_locations:
-                                location_stmt = select(Location).where(Location.name == location_name)
-                                result = await session.execute(location_stmt)
-                                location = result.scalar_one_or_none()
-                                
-                                if not location:
-                                    location = Location(name=location_name, location_type="unknown")
-                                    session.add(location)
-                                    await session.flush()
-                                
-                                # Check if the top content location already exists
-                                existing_top_content_location = await session.execute(
-                                    select(TopContentLocation).where(
-                                        TopContentLocation.content_id == content.id,
-                                        TopContentLocation.location_id == location.id
-                                    )
-                                )
-                                if existing_top_content_location.scalar_one_or_none():
-                                    logger.info(f"TopContentLocation for content {content.url} and location {location.name} already exists. Skipping insertion.")
-                                    continue
-
-                                # Insert new top content location
-                                content_location = TopContentLocation(content_id=content.id, location_id=location.id)
-                                session.add(content_location)
-                    
-                    else:
-                        logger.error(f"Content not found: {content_data['url']}")
-
-                except ValidationError as e:
-                    logger.error(f"Validation error for content {content_data['url']}: {e}")
-                except json.JSONDecodeError as e:
-                    logger.error(f"JSON decoding error for content: {e}")
-                except Exception as e:
-                    logger.error(f"Error processing content {content_data.get('url', 'unknown')}: {str(e)}", exc_info=True)
+                    # Insert/Update pivot
+                    upsert_content_location = insert(ContentLocation).values(
+                        content_id=content.id,
+                        location_id=location.id,
+                        frequency=1,
+                        is_top_location=(loc_name in top_location_names)
+                    ).on_conflict_do_update(
+                        index_elements=['content_id', 'location_id'],
+                        set_={
+                            'frequency': ContentLocation.frequency + 1,
+                            'is_top_location': True if loc_name in top_location_names else ContentLocation.is_top_location
+                        }
+                    )
+                    await session.execute(upsert_content_location)
 
         await session.commit()
-        logger.info("Stored contents with entities in PostgreSQL")
+        logger.info("Stored contents with entities and (optionally) locations in PostgreSQL.")
 
-        # Clear the processed contents from Redis
-        await redis_conn.ltrim('contents_with_entities_queue', len(contents), -1)
+        # Trim the processed items from Redis
+        await redis_conn.ltrim('contents_with_entities_queue', len(contents_json_array), -1)
         logger.info("Redis queue trimmed")
         await redis_conn.close()
-        logger.info("Contents with entities stored successfully")
-        return {"message": "Contents with entities processed and stored successfully."}
+
+        return {"message": "Processed and stored content with entities and locations successfully."}
+
     except Exception as e:
         logger.error(f"Error storing contents with entities: {e}", exc_info=True)
         await session.rollback()
+        await redis_conn.close()
         raise HTTPException(status_code=400, detail=str(e))
     finally:
         await session.close()

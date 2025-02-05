@@ -141,9 +141,9 @@ def generate_embeddings_flow(batch_size: int = 10):
     # Write results to Redis
     write_contents_to_redis(contents_with_embeddings)
 
-# -------------------------------------------------------------------
-# OPTIONAL: For local testing only (without Prefect deployment)
-# -------------------------------------------------------------------
-if __name__ == "__main__":
-    # Just run flow once with default params
-    generate_embeddings_flow(batch_size=50)
+# # -------------------------------------------------------------------
+# # OPTIONAL: For local testing only (without Prefect deployment)
+# # -------------------------------------------------------------------
+# if __name__ == "__main__":
+#     # Just run flow once with default params
+#     generate_embeddings_flow(batch_size=50)

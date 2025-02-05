@@ -65,7 +65,7 @@ def call_pelias_api(location, lang=None):
                         'area': area
                     }
                 else:
-                    looger.warning(f"No geometry found for location: {location}")
+                    logger.warning(f"No geometry found for location: {location}")
 
             else:
                 logger.warning(f"No data returned from API for location: {location}")
@@ -162,5 +162,5 @@ def geocode_locations_flow(batch_size: int = 100):
 # -------------------------------------------------------------------
 # OPTIONAL: For local testing only (without Prefect deployment)
 # -------------------------------------------------------------------
-# if __name__ == "__main__":
-#     geocode_locations_flow(batch_size=20)
+if __name__ == "__main__":
+    geocode_locations_flow(batch_size=1000)

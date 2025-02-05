@@ -50,8 +50,4 @@ def scrape_newssites_flow(flags: list):
     save_contents_to_redis(contents)
 
 # if __name__ == "__main__":
-#     scrape_newssites_flow.serve(
-#         name="scrape-newssites-deployment",
-#         parameters={"flags": ["cnn", "dw", "bbc"]},
-#         cron="0 * * * *"
-#     )
+#     scrape_newssites_flow(flags=["cnn", "dw", "bbc"])

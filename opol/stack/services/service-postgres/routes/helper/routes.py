@@ -30,9 +30,14 @@ from sqlmodel import Session
 from typing import AsyncGenerator
 from core.utils import logger
 from core.adb import engine, get_session, create_db_and_tables
-from core.middleware import add_cors_middleware
-from core.models import Content, ContentEntity, ContentTag, Entity, EntityLocation, Location, Tag, ContentEvaluation, MediaDetails
+from core.models import Content, ContentEntity, ContentTag, ContentLocation, Entity, EntityLocation, Location, Tag, ContentEvaluation as ORMContentEvaluation, MediaDetails, Image
+from core.classification_models import ContentRelevance, ContentEvaluation as PydanticContentEvaluation
 from core.service_mapping import ServiceConfig
+from sqlalchemy.dialects.postgresql import insert
+from opol import OPOL
+import datetime
+from datetime import timezone, timedelta
+import asyncio
 
 # App API Router
 router = APIRouter()
@@ -68,7 +73,7 @@ async def delete_all_classifications(session: AsyncSession = Depends(get_session
     try:
         async with session.begin():
             # Delete all records from the ContentEvaluation table
-            await session.execute(delete(ContentEvaluation))
+            await session.execute(delete(ORMContentEvaluation))
             await session.commit()
             logger.info("All classifications deleted successfully.")
             return {"message": "All classifications deleted successfully."}
@@ -330,14 +335,7 @@ async def dump_contents(session: AsyncSession = Depends(get_session)) -> List[di
 
     # Prepare the dumped data
     dumped_contents = [
-        {
-            "url": content.url,
-            "title": content.title,
-            "text_content": content.text_content,
-            "source": content.source,
-            "content_type": content.content_type,
-            "insertion_date": content.insertion_date
-        }
+        content.model_dump()
         for content in contents
     ]
 
@@ -483,13 +481,13 @@ async def update_articles(
                 Content.url.ilike(url_pattern)
             )
             result = await session.execute(query)
-            contents = result.scalars().all()
+            contents = result.scalars().all()[:limit]
 
         async with httpx.AsyncClient(timeout=httpx.Timeout(10.0)) as client:
             for content in contents:
                 if content.url and '/video' not in content.url:
                     logger.info(f"Processing {source} article: {content.url}")
-                    response = await client.post(
+                    response = await client.get(
                         "http://service-scraper:8081/scrape_article",
                         params={"url": content.url}
                     )
@@ -503,10 +501,18 @@ async def update_articles(
                             content.text_content = data.get("text_content")
                             content.summary = data.get("summary") if data.get("summary") else None
                             content.meta_summary = data.get("meta_summary") if data.get("meta_summary") else None
-                            if content.media_details:
-                                content.media_details.top_image = data.get("top_image")
+                            content.last_updated = data.get("last_updated")
+                            if data.get("top_image") or data.get("images"):
+                                content.media_details = MediaDetails(
+                                    top_image=data.get("top_image"),
+                                    images=[
+                                        Image(image_url=img) for img in data.get("images", [])
+                                    ]
+                                )
                             else:
-                                content.media_details = MediaDetails(top_image=data.get("top_image"))
+                                logger.error(f"No top image or images found for {content.url}")
+                                continue
+
                             await session.flush()
                     else:
                         logger.error(f"Failed to scrape {content.url}: {response.text}")
@@ -537,7 +543,7 @@ async def get_articles_with_top_image(session: AsyncSession = Depends(get_sessio
 
             articles_data = []
             for article, top_image in articles_with_images:
-                article_dict = article.dict()
+                article_dict = article.model_dump(exclude={"embeddings"})
                 article_dict["top_image"] = top_image
                 articles_data.append(article_dict)
 
@@ -547,14 +553,231 @@ async def get_articles_with_top_image(session: AsyncSession = Depends(get_sessio
         raise HTTPException(status_code=500, detail="Error retrieving articles with top image")
 
 
-@router.get("/failed_geocodes")
-async def get_failed_geocodes():
+
+@router.post("/fix_numpy_embeddings")
+async def fix_numpy_embeddings(session: AsyncSession = Depends(get_session)):
+    """
+    Converts any numpy array embeddings to Python lists across all relevant models:
+      - Content.embeddings
+      - Image.embeddings
+      - VideoFrame.embeddings
+    This helps avoid serialization errors that arise when fastapi tries to JSON-encode numpy arrays.
+    """
+    import numpy as np
+
     try:
-        redis_conn = await Redis.from_url(get_redis_url(), db=6, decode_responses=True)
-        failed_geocodes = await redis_conn.lrange('failed_geocodes_queue', 0, -1)
-        failed_locations = [json.loads(fail) for fail in failed_geocodes]
-        await redis_conn.close()
-        return {"failed_geocodes": failed_locations}
+        async with session.begin():
+            # 1. Fix Content.embeddings
+            contents_query = select(Content).where(Content.embeddings.isnot(None))
+            contents_result = await session.execute(contents_query)
+            contents = contents_result.scalars().all()
+            fixed_content = 0
+            for content in contents:
+                if isinstance(content.embeddings, np.ndarray):
+                    content.embeddings = content.embeddings.tolist()
+                    fixed_content += 1
+
+
+            await session.commit()
+
+        return {
+            "message": "All numpy-based embeddings have been converted to lists.",
+            "fixed_content_embeddings": fixed_content
+        }
+
     except Exception as e:
-        logger.error(f"Error retrieving failed geocodes: {e}", exc_info=True)
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error(f"Error converting numpy embeddings: {e}", exc_info=True)
+        await session.rollback()
+        raise HTTPException(status_code=500, detail="Error converting numpy embeddings.")
+
+
+def standardize_source_name(source: Optional[str]) -> str:
+    """
+    Maps various source names to a standardized label.
+    """
+    if source is None:
+        return None  # or return a default value if you prefer
+
+    source_mapping = {
+        "dw": "DW",
+        "DW": "DW",
+        "cnn": "CNN",
+        "CNN": "CNN",
+        "bbc": "BBC News",
+        "BBC News": "BBC News"
+    }
+    return source_mapping.get(source.lower(), source)
+
+@router.post("/standardize_sources")
+async def standardize_sources(session: AsyncSession = Depends(get_session)):
+    """
+    Standardizes the source names in the Content table.
+    """
+    try:
+        async with session.begin():
+            query = select(Content)
+            result = await session.execute(query)
+            contents = result.scalars().all()
+
+            for content in contents:
+                if content.source is None:
+                    logger.warning(f"Content with ID {content.id} has no source. URL: {content.url}")
+                else:
+                    standardized_source = standardize_source_name(content.source)
+                    if content.source != standardized_source:
+                        content.source = standardized_source
+                        logger.info(f"Updated source for content {content.id} to {standardized_source}")
+
+            await session.commit()
+            return {"message": "Source names standardized successfully."}
+    except Exception as e:
+        logger.error(f"Error standardizing source names: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error standardizing source names")
+
+
+## Take 50 most recent contents, create vectors for them, plot them in a 2D space
+@router.get("/plot_contents")
+async def plot_contents(session: AsyncSession = Depends(get_session)):
+    try:
+        async with session.begin():
+            query = select(Content).order_by(Content.insertion_date.desc()).limit(50)
+            result = await session.execute(query)
+            contents = result.scalars().all()
+            return {"contents": contents}
+    except Exception as e:
+        logger.error(f"Error plotting contents: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error plotting contents")
+
+
+# Initialize Opol
+opol = OPOL(api_key=os.environ["OPOL_API_KEY"])
+
+# Initialize Classification Service
+xclass = opol.classification(
+    provider="Google",
+    model_name="models/gemini-1.5-flash-latest",
+    llm_api_key=os.environ["GOOGLE_API_KEY"]
+)
+
+
+@router.post("/classify_events_last_week")
+async def classify_events_last_week(
+    limit: Optional[int] = Query(20, description="Number of articles to process"),
+    session: AsyncSession = Depends(get_session)
+):
+    """
+    Classify articles from the last week for relevance and evaluate relevant ones.
+    Tags irrelevant articles as 'anecdotal'.
+    """
+    try:
+        logger.info("Starting classification of events from the last week.")
+        
+        # Calculate the date one week ago
+        one_week_ago = datetime.datetime.now(timezone.utc) - timedelta(weeks=1)
+        logger.debug(f"One week ago date calculated as: {one_week_ago.isoformat()}")
+
+        # Single transaction block encompassing all operations
+        async with session.begin():
+            # Retrieve 'anecdotal' tag
+            anecdotal_tag = await session.execute(
+                select(Tag).where(Tag.name == "anecdotal")
+            )
+            anecdotal = anecdotal_tag.scalar_one_or_none()
+            logger.debug(f"Anecdotal tag retrieved: {anecdotal}")
+
+            if anecdotal:
+                # Subquery to exclude articles with 'anecdotal' tag
+                subquery = select(Content.id).join(ContentTag).where(ContentTag.tag_id == anecdotal.id)
+                logger.debug("Subquery created to exclude articles with 'anecdotal' tag.")
+            else:
+                subquery = select(Content.id).where(False)  # No articles have the 'anecdotal' tag
+                logger.debug("No 'anecdotal' tag found, subquery will exclude no articles.")
+
+            # Get IDs of articles that already have evaluations
+            evaluated_ids = await session.execute(select(ORMContentEvaluation.content_id))
+            evaluated_ids = [row[0] for row in evaluated_ids.fetchall()]
+            logger.debug(f"Evaluated article IDs retrieved: {evaluated_ids}")
+
+            # Main query to fetch relevant articles
+            query = (
+                select(Content)
+                .where(
+                    and_(
+                        Content.insertion_date >= one_week_ago.isoformat(),
+                        Content.id.not_in(subquery),
+                        Content.id.not_in(evaluated_ids)
+                    )
+                )
+                .limit(limit)
+            )
+            result = await session.execute(query)
+            articles = result.scalars().all()
+            logger.info(f"Fetched {len(articles)} articles for classification.")
+
+            if not articles:
+                logger.info("No articles to classify from the last week.")
+                return {"message": "No articles to classify from the last week."}
+
+            relevant_articles = []
+            irrelevant_articles = []
+
+            for article in articles:
+                logger.debug(f"Classifying article ID {article.id} for relevance.")
+                # Initial Classification: Relevance
+                relevance_result = xclass.classify(ContentRelevance, "", article.text_content)
+                logger.debug(f"Relevance result for article ID {article.id}: {relevance_result.type}")
+
+                if relevance_result.type == "Relevant":
+                    logger.debug(f"Article ID {article.id} is relevant. Proceeding with evaluation.")
+                    # Final Evaluation for relevant content
+                    evaluation_result = xclass.classify(PydanticContentEvaluation, "", article.text_content)
+
+                    # Extract string values from dictionaries
+                    rhetoric = evaluation_result.rhetoric.type if evaluation_result.rhetoric else None
+                    event_type = evaluation_result.event_type.type if evaluation_result.event_type else None
+                    logger.debug(f"Evaluation result for article ID {article.id}: Rhetoric - {rhetoric}, Event Type - {event_type}")
+
+                    # Create ORMContentEvaluation entry
+                    content_evaluation = ORMContentEvaluation(
+                        content_id=article.id,
+                        rhetoric=rhetoric,
+                        event_type=event_type,
+                        **evaluation_result.model_dump(exclude={'rhetoric', 'event_type'})
+                    )
+                    session.add(content_evaluation)
+                    relevant_articles.append((article, evaluation_result))
+                else:
+                    logger.debug(f"Article ID {article.id} is irrelevant and will be tagged as 'anecdotal'.")
+                    # Tag as 'anecdotal'
+                    irrelevant_articles.append(article)
+
+            # Process Irrelevant Articles
+            if irrelevant_articles:
+                if not anecdotal:
+                    logger.info("Creating 'anecdotal' tag as it does not exist.")
+                    # Create the 'anecdotal' tag if it doesn't exist
+                    anecdotal = Tag(name="anecdotal")
+                    session.add(anecdotal)
+                    await session.flush()
+
+                for article in irrelevant_articles:
+                    # Associate the 'anecdotal' tag with the article
+                    association = ContentTag(content_id=article.id, tag_id=anecdotal.id)
+                    session.add(association)
+                    logger.debug(f"Article ID {article.id} tagged as 'anecdotal'.")
+
+        await session.commit()
+        logger.info("Classification completed successfully.")
+
+        return {
+            "message": "Classification completed successfully.",
+            "classified_as_relevant": len(relevant_articles),
+            "classified_as_irrelevant": len(irrelevant_articles),
+            "relevant_articles": relevant_articles,
+            "irrelevant_articles": irrelevant_articles
+        }
+
+    except Exception as e:
+        logger.error(f"Error classifying events: {e}", exc_info=True)
+        await session.rollback()
+        raise HTTPException(status_code=500, detail="Error classifying events")

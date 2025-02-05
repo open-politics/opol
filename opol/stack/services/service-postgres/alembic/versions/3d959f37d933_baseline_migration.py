@@ -1,8 +1,8 @@
-"""V 0.4 Baseline Migration
+"""Baseline Migration
 
-Revision ID: 6694d55e844e
-Revises: 4560cd669d19
-Create Date: 2025-01-14 06:13:16.611614
+Revision ID: 3d959f37d933
+Revises: 857a6cd02af8
+Create Date: 2025-01-21 15:58:37.854653
 
 """
 from alembic import op
@@ -14,7 +14,7 @@ from pgvector.sqlalchemy import Vector
 
 
 # revision identifiers, used by Alembic.
-revision = '6694d55e844e'
+revision = '3d959f37d933'
 down_revision = None
 branch_labels = None
 depends_on = None

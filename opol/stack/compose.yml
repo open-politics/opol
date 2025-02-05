@@ -137,8 +137,6 @@ services:
       - default
     ports:
       - "${GEO_SERVICE_PORT}:3690"
-    expose:
-      - "3690"
     env_file:
       - .env
     environment:
@@ -149,6 +147,7 @@ services:
     build: 
       context: .
       dockerfile: ./services/service-postgres/Dockerfile
+    restart: always
     volumes:
       - ./services/service-postgres/alembic/versions:/app/alembic/versions
       - ./.store/credentials/service-postgres-key.json:/app/credentials/service-postgres-key.json
@@ -176,14 +175,16 @@ services:
       - default
 
   worker-prefect:
-    image: openpoliticsproject/worker-base:latest
-    command: ["prefect", "worker", "start", "--pool", "docker-pool"]
-    restart: always
-    env_file:
-      - .env
+    image: prefecthq/prefect:3-python3.11
     build:
-      context: flows
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./flows/Dockerfile
+    command: >
+      sh -c "prefect worker start --pool opol-docker-pool --type docker --limit 5"
+    restart: always
+    environment:
+      - PREFECT_API_URL=${PREFECT_API_URL}
+      - PREFECT_API_KEY=${PREFECT_API_KEY}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:

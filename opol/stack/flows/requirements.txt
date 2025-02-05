@@ -20,3 +20,8 @@ opol
 google-generativeai
 instructor
 prettyprint
+scikit-learn
+matplotlib
+optuna
+umap-learn
+hdbscan

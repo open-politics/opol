@@ -1,109 +1,252 @@
-from typing import List, Dict, Any
-from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks
-from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-import json
-from redis import Redis
-import logging
-from collections import Counter
-import requests
-# from prefect import task, flow
-from geojson import Feature, FeatureCollection, Point
+from typing import List, Optional
+from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, Query
 from fastapi.responses import JSONResponse
+from geojson import Feature, FeatureCollection, Point
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import select
 from sqlalchemy.orm import selectinload
+from uuid import UUID
+import logging
+import pickle
+import json
+import requests
+from datetime import datetime, timezone, timedelta
+    
+from core.adb import get_session, get_redis_url
+from core.models import Location, Content, Entity, ContentLocation, ContentEvaluation
+from redis import Redis
 from sqlalchemy import and_
 from core.utils import logger
 from core.service_mapping import ServiceConfig
-from core.models import Content, Location, Entity, ContentEvaluation, EntityLocation, ContentEntity
-from core.adb import get_session, get_redis_url
-import uuid
-import pickle
-from datetime import timedelta
-import asyncio
-from datetime import datetime
-import logfire
-import uvicorn
 
-logfire.configure()
+from pydantic import BaseModel
+from typing import Union
+
 config = ServiceConfig()
 
-# Constants for Redis cache configuration
-CACHE_EXPIRY = timedelta(minutes=15)  # Cache for 15 minutes
-CACHE_WARM_INTERVAL = timedelta(minutes=14)
+CACHE_EXPIRY = timedelta(minutes=15)
 LAST_WARM_KEY = "geojson_last_warm"
 
-# Helper function to get Redis cache connection
-def get_redis_cache():
-    return Redis.from_url(get_redis_url(), db=5)  # Using db 5 for caching
-
-# Add cache warming function
-async def warm_cache(session: AsyncSession):
-    logger.info("Starting cache warm-up")
-    redis_cache = get_redis_cache()
-    
-    try:
-        # Generate and cache main GeoJSON
-        feature_collection = await generate_geojson(session)
-        redis_cache.setex(
-            "geojson_all",
-            CACHE_EXPIRY,
-            pickle.dumps(feature_collection)
-        )
-        
-        # Generate and cache common event types
-        event_types = ["protest", "conflict", "disaster"]
-        logger.error(f"Generating event GeoJSON for {event_types}")
-        for event_type in event_types:
-            feature_collection = await generate_event_geojson(session, event_type)
-            redis_cache.setex(
-                f"geojson_events_{event_type}",
-                CACHE_EXPIRY,
-                pickle.dumps(feature_collection)
-            )
-        
-        redis_cache.set(LAST_WARM_KEY, datetime.utcnow().isoformat())
-        logger.info("Cache warm-up completed")
-        
-    except Exception as e:
-        logger.error(f"Error during cache warm-up: {e}")
-        raise
-    finally:
-        redis_cache.close()
-
-# Modify the lifespan function
-async def lifespan(app: FastAPI):
-    logger.warning("Starting lifespan")
-    
-    # # Start background cache warming task
-    # async def periodic_cache_warm():
-    #     while True:
-    #         try:
-    #             # Create a new session for each warm-up cycle
-    #             async for session in get_session():
-    #                 try:
-    #                     await warm_cache(session)
-    #                 except Exception as e:
-    #                     logger.error(f"Error during cache warm-up: {e}")
-    #             await asyncio.sleep(CACHE_WARM_INTERVAL.total_seconds())
-    #         except Exception as e:
-    #             logger.error(f"Error in periodic cache warming: {e}")
-    #             await asyncio.sleep(60)  # Wait a minute before retrying
-    
-    # # Start the background task
-    # asyncio.create_task(periodic_cache_warm())
-    
+def lifespan(app: FastAPI):
+    logger.info("Starting lifespan")
     yield
+    logger.info("Stopping lifespan")
 
 app = FastAPI(lifespan=lifespan)
 
-# Function to retrieve contents from Redis
-def retrieve_contents_from_redis(redis_conn, batch_size=50):
-    batch = redis_conn.lrange('contents_without_geocoding_queue', 0, batch_size - 1)
-    redis_conn.ltrim('contents_without_geocoding_queue', batch_size, -1)
-    return [json.loads(content) for content in batch]
 
-# Function to call Pelias API for geocoding
+def get_redis_cache():
+    return Redis.from_url(get_redis_url(), db=5)
+
+# Pydantic Models for Serialization
+class Classification(BaseModel):
+    event_type: Optional[str]
+    event_subtype: Optional[str]
+    sociocultural_interest: Optional[int]
+    global_political_impact: Optional[int]
+    regional_political_impact: Optional[int]
+    global_economic_impact: Optional[int]
+    regional_economic_impact: Optional[int]
+
+class ContentProperties(BaseModel):
+    content_id: str
+    title: Optional[str]
+    url: Optional[str]
+    source: Optional[str]
+    insertion_date: Optional[str]
+    classification: Optional[Classification]
+    top_entities: List[str]
+
+class LocationProperties(BaseModel):
+    location_id: str
+    location_name: Optional[str]
+    location_type: Optional[str]
+    content_count: int
+    contents: List[ContentProperties]
+
+class GeoFeature(BaseModel):
+    type: str
+    geometry: dict
+    properties: LocationProperties
+
+class GeoFeatureCollection(BaseModel):
+    type: str
+    features: List[GeoFeature]
+
+# Defaults to 3 months back in time
+class GeoManager:
+    """
+    A manager class to handle dynamic retrieval of content,
+    generation of geojson, and caching strategies.
+    """
+    def __init__(self, session: AsyncSession):
+        self.session = session
+        self.logger = logging.getLogger("GeoManager")
+
+    async def generate_geojson(
+        self,
+        filter_event_type: Optional[str] = None,
+        limit: int = 100
+    ) -> dict:
+        """
+        Generate a GeoJSON FeatureCollection based on the provided filters.
+        """
+        # Build base query for Locations with optional event_type filtering
+        location_query = select(Location).options(
+            selectinload(Location.contents).selectinload(Content.evaluation),
+            selectinload(Location.contents).selectinload(Content.entities)
+        ).where(Location.coordinates != None).limit(limit)
+
+        if filter_event_type:
+            location_query = location_query.join(
+                ContentLocation, ContentLocation.location_id == Location.id
+            ).join(
+                Content, Content.id == ContentLocation.content_id
+            ).join(
+                ContentEvaluation, ContentEvaluation.content_id == Content.id
+            ).where(
+                ContentEvaluation.event_type == filter_event_type,
+                ContentLocation.is_top_location == True
+            ).where(
+                Content.insertion_date >= (datetime.now(timezone.utc) - timedelta(weeks=12)).isoformat()
+            ).order_by(Content.insertion_date.desc()).limit(limit)
+
+        result = await self.session.execute(location_query)
+        locations = result.scalars().unique().all()
+        self.logger.info(f"Retrieved {len(locations)} locations from the DB, filter_event_type={filter_event_type}")
+
+        features = []
+        for loc in locations:
+            if loc.coordinates is not None and len(loc.coordinates) == 2:
+                coords = [float(c) for c in loc.coordinates]
+                
+                contents_list = []
+                for content in loc.contents:
+                    if filter_event_type and content.evaluation and content.evaluation.event_type != filter_event_type:
+                        self.logger.debug(f"Skipping content ID {content.id} due to event type mismatch: {content.evaluation.event_type}")
+                        continue
+
+                    eval_data = content.evaluation
+                    record_eval = {}
+                    if eval_data:
+                        record_eval = {
+                            "event_type": eval_data.event_type,
+                            "event_subtype": eval_data.event_subtype,
+                            "sociocultural_interest": eval_data.sociocultural_interest,
+                            "global_political_impact": eval_data.global_political_impact,
+                            "regional_political_impact": eval_data.regional_political_impact,
+                            "global_economic_impact": eval_data.global_economic_impact,
+                            "regional_economic_impact": eval_data.regional_economic_impact,
+                        }
+                        self.logger.debug(f"Evaluation data for content ID {content.id}: {record_eval}")
+
+                    top_entities = [ent.name for ent in content.entities if getattr(ent, 'is_top', False)]
+
+                    contents_list.append({
+                        "content_id": str(content.id),
+                        "title": content.title,
+                        "url": content.url,
+                        "source": content.source,
+                        "insertion_date": content.insertion_date,
+                        "classification": record_eval,
+                        "top_entities": top_entities
+                    })
+
+                feature = Feature(
+                    geometry=Point(coords),
+                    properties={
+                        "location_id": str(loc.id),
+                        "location_name": loc.name,
+                        "location_type": loc.location_type,
+                        "content_count": len(contents_list),
+                        "contents": contents_list
+                    }
+                )
+                features.append(feature)
+            else:
+                self.logger.warning(f"Invalid coordinates for location ID {loc.id}: {loc.coordinates}")
+
+        return FeatureCollection(features)
+
+    async def warm_cache(self):
+        """
+        Warm up the main "all-locations" cache and some sample event types.
+        """
+        self.logger.info("Starting cache warm-up")
+        redis_cache = get_redis_cache()
+        try:
+            # Generate base (all) data
+            base_fc = await self.generate_geojson(filter_event_type=None, limit=1000)
+            redis_cache.setex("geojson_all", CACHE_EXPIRY, pickle.dumps(base_fc))
+
+            # Generate some example event types
+            for ev_type in ["Protests", "Crisis", "Politics"]:
+                ev_fc = await self.generate_geojson(filter_event_type=ev_type, limit=250)
+                redis_cache.setex(f"geojson_events_{ev_type}", CACHE_EXPIRY, pickle.dumps(ev_fc))
+
+            redis_cache.set(LAST_WARM_KEY, datetime.now(timezone.utc).isoformat())
+            self.logger.info("Finished cache warm-up")
+        except Exception as e:
+            self.logger.error(f"Error during cache warm-up: {e}")
+        finally:
+            redis_cache.close()
+
+
+@app.get("/dynamic_geojson")
+async def get_dynamic_geojson(
+    background_tasks: BackgroundTasks,
+    event_type: Optional[str] = Query(None, description="If set, filter by event_type"),
+    limit: int = 100,
+    session: AsyncSession = Depends(get_session)
+):
+    """
+    Get dynamic GeoJSON, optionally filtering by event_type, with an upper limit on returned contents.
+    Caches the "all-locations" data if not present, or if event_type is set, generates fresh data.
+    """
+    redis_cache = get_redis_cache()
+    manager = GeoManager(session)
+
+    # Try retrieving from cache if no event filter
+    cache_key = "geojson_all" if not event_type else f"geojson_events_{event_type}"
+    try:
+        if not event_type:
+            cached_data = redis_cache.get(cache_key)
+            if cached_data:
+                # If data is stale, we can do a warm-up in background
+                last_warm = redis_cache.get(LAST_WARM_KEY)
+                if last_warm:
+                    last_warm_time = datetime.fromisoformat(last_warm.decode())
+                    if datetime.now(timezone.utc) - last_warm_time > timedelta(minutes=14):
+                        background_tasks.add_task(manager.warm_cache)
+                return JSONResponse(content=pickle.loads(cached_data))
+
+        # If no cache or event_type is specified, generate fresh.
+        feature_collection = await manager.generate_geojson(filter_event_type=event_type, limit=limit)
+
+        # If no event type, store in cache to speed up subsequent calls
+        if not event_type:
+            redis_cache.setex(cache_key, CACHE_EXPIRY, pickle.dumps(feature_collection))
+
+        return JSONResponse(content=feature_collection)
+
+    except Exception as e:
+        logger.error(f"Error generating dynamic GeoJSON: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        redis_cache.close()
+
+
+@app.post("/warm_cache_now")
+async def force_cache_warm_up(session: AsyncSession = Depends(get_session)):
+    """
+    Force an immediate warm-up of the geojson caches.
+    """
+    manager = GeoManager(session)
+    await manager.warm_cache()
+    return {"message": "Cache warmed up successfully"}
+
+
+
 def call_pelias_api(location, lang=None):
     custom_mappings = {
         "europe": {
@@ -151,57 +294,6 @@ def call_pelias_api(location, lang=None):
         logger.error(f"Unexpected error for location {location}: {str(e)}")
     return None
 
-# Function to process content and geocode locations
-def process_content(content_data):
-    entities = content_data.get('entities', [])
-    location_entities = [entity for entity in entities if entity['tag'] in ["LOC"]]
-    logger.info(f"Location entities: {location_entities[:3]}")
-    location_counts = Counter(entity['text'] for entity in location_entities)
-    total_locations = len(location_entities)
-    location_weights = {location: count / total_locations for location, count in location_counts.items()}
-
-    geocoded_locations = []
-    for location, weight in location_weights.items():
-        coordinates = call_pelias_api(location, lang='en')
-        if coordinates:
-            if weight > 0.03:
-                geocoded_locations.append({
-                    'name': location,
-                    'type': "location",
-                    'coordinates': coordinates,
-                    'weight': weight
-                })
-                logger.info(f"Geocoded location {location} with coordinates {coordinates} and weight {weight}.")
-            else:
-                logger.info(f"Skipped low-weight location: {location} (weight: {weight})")
-        else:
-            logger.warning(f"Unable to geocode location: {location}")
-
-    return {**content_data, 'geocoded_locations': geocoded_locations}
-
-# Function to push geocoded contents to Redis
-# @task
-def push_geocoded_contents(redis_conn, geocoded_contents):
-    for content in geocoded_contents:
-        redis_conn.lpush('contents_with_geocoding_queue', json.dumps(content))
-    logger.info(f"Pushed {len(geocoded_contents)} geocoded contents to Redis queue.")
-
-# Flow to geocode contents
-# @flow
-def geocode_contents_flow(batch_size: int):
-    logger.info("Starting geocoding process")
-    redis_conn_raw = Redis.from_url(get_redis_url(), db=3, decode_responses=True)
-    redis_conn_processed = Redis.from_url(get_redis_url(), db=4, decode_responses=True)
-
-    try:
-        raw_contents = retrieve_contents_from_redis(redis_conn_raw, batch_size)
-        geocoded_contents = [process_content(content) for content in raw_contents]
-        push_geocoded_contents(redis_conn_processed, geocoded_contents)
-    finally:
-        redis_conn_raw.close()
-        redis_conn_processed.close()
-
-    logger.info("Geocoding process completed")
 
 @app.get("/geocode_location")
 def geocode_location(location: str):
@@ -218,12 +310,6 @@ def geocode_location(location: str):
         }
     else:
         return {"error": "Unable to geocode location"}
-
-@app.post("/geocode_contents")
-def geocode_contents(batch_size: int = 50):
-    logger.info("GEOCODING CONTENTS")
-    geocode_contents_flow(batch_size)
-    return {"message": "Geocoding process initiated successfully"}
 
 @app.get("/get_country_data")
 def get_country_data(country):
@@ -244,237 +330,12 @@ def get_country_data(country):
             return page_data['extract']
     return None
 
+
 @app.get("/healthz")
 def healthcheck():
     return {"message": "ok"}, 200
 
-# Task to log GeoJSON generation
-# @task
-async def logging_geojson(position):
-    logger.info("Starting GeoJSON generation")
-    print(f"GeoJSON {position} ")
 
-# Get all locations GeoJSON
-@app.get("/geojson")
-async def get_locations_geojson(
-    background_tasks: BackgroundTasks,
-    session: AsyncSession = Depends(get_session)
-):
-    redis_cache = get_redis_cache()
-    cache_key = "geojson_all"
-    
-    try:
-        cached_data = redis_cache.get(cache_key)
-        if cached_data:
-            # Check if cache is getting stale
-            last_warm = redis_cache.get(LAST_WARM_KEY)
-            if last_warm:
-                last_warm_time = datetime.fromisoformat(last_warm.decode())
-                if datetime.utcnow() - last_warm_time > CACHE_WARM_INTERVAL:
-                    background_tasks.add_task(warm_cache, session)
-            
-            logger.info("Returning GeoJSON from cache")
-            return JSONResponse(content=pickle.loads(cached_data))
-        
-        # If no cache exists, generate and cache
-        feature_collection = await generate_geojson(session)
-        redis_cache.setex(
-            cache_key,
-            CACHE_EXPIRY,
-            pickle.dumps(feature_collection)
-        )
-        
-        return JSONResponse(content=feature_collection)
-        
-    except Exception as e:
-        logger.error(f"Error in GeoJSON generation/caching: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        redis_cache.close()
-
-# Get event-specific GeoJSON
-@app.get("/geojson_events/{event_type}")
-async def get_geojson_by_event_type(event_type: str, limit: int = 100, session: AsyncSession = Depends(get_session)):
-    redis_cache = get_redis_cache()
-    cache_key = f"geojson_events_{event_type}"
-    
-    try:
-        cached_data = redis_cache.get(cache_key)
-        if cached_data:
-            logger.info(f"Returning {event_type} GeoJSON from cache")
-            return JSONResponse(content=pickle.loads(cached_data))
-            
-        feature_collection = await generate_event_geojson(session, event_type, limit)
-        
-        redis_cache.setex(
-            cache_key,
-            CACHE_EXPIRY,
-            pickle.dumps(feature_collection)
-        )
-        
-        return JSONResponse(content=feature_collection)
-        
-    except Exception as e:
-        logger.error(f"Error in event GeoJSON generation/caching: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        redis_cache.close()
-
-class ByIdRequest(BaseModel):
-    content_ids: List[str]
-
-@app.post("/geojson_by_content_ids")
-async def get_geojson_by_content_ids(
-    request: ByIdRequest,
-    session: AsyncSession = Depends(get_session)
-):
-    logger.warning("Starting GeoJSON generation for specified content IDs")
-    logger.warning(f"Content IDs: {request.content_ids}")
-    try:
-        content_uuids = [uuid.UUID(content_id) for content_id in request.content_ids]
-
-        query = (
-            select(Content)
-            .options(selectinload(Content.entities).selectinload(Entity.locations))
-            .where(Content.id.in_(content_uuids))
-        )
-
-        result = await session.execute(query)
-        contents = result.scalars().unique().all()
-        logger.warning(f"Retrieved {len(contents)} contents from database")
-
-        features = []
-        for content in contents:
-            for entity in content.entities:
-                for location in entity.locations:
-                    logger.debug(f"Processing location: {location.name}")
-                    coordinates = [float(coord) for coord in location.coordinates]
-                    point = Point((coordinates[1], coordinates[0]))
-
-                    feature = Feature(
-                        geometry=point,
-                        properties={
-                            "content_id": str(content.id),
-                            "url": content.url,
-                            "title": content.title,
-                            "source": content.source,
-                            "insertion_date": content.insertion_date,
-                            "location_name": location.name,
-                            "location_type": location.location_type
-                        }
-                    )
-                    features.append(feature)
-
-        logger.warning(f"Created FeatureCollection with {len(features)} features for specified contents")
-        return JSONResponse(content=FeatureCollection(features))
-
-    except Exception as e:
-        logger.error(f"Error creating GeoJSON for specified contents: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-# Helper function to generate GeoJSON
-async def generate_geojson(session: AsyncSession) -> dict:
-    query = select(Location).options(
-        selectinload(Location.entities).selectinload(Entity.contents)
-    )
-    result = await session.execute(query)
-    locations = result.scalars().unique().all()
-    logger.error(f"Retrieved {len(locations)} locations from database\n{locations}")
-    
-    features = []
-    for location in locations:
-        logger.error(f"Processing location: {location.name}")
-        coordinates = [float(coord) for coord in location.coordinates] if location.coordinates else None
-        point = Point((coordinates[1], coordinates[0])) if coordinates else None    
-
-        logger.error(f"Point: {point}")
-
-        contents = []
-        for entity in location.entities:
-
-            if len(entity.contents) > 0:
-                for content in entity.contents:
-                    logger.error(f"Processing content: {content.title}")
-                    logger.error(f"Content evaluation: {content}")
-                    contents.append({
-                        "url": content.url,
-                        "title": content.title,
-                        "source": content.source,
-                        "insertion_date": content.insertion_date
-                    })
-            else:
-                logger.error(f"No contents found for entity: {entity.id}")
-        logger.error(f"Found {len(contents)} contents for location: {location.name}")
-
-        feature = Feature(
-            geometry=point,
-            properties={
-                "name": location.name,
-                "type": location.location_type,
-                "content_count": len(contents),
-                "contents": contents
-            }
-        )
-        features.append(feature)
-
-    feature_collection = FeatureCollection(features)
-    logger.info(f"Created FeatureCollection with {len(features)} features")
-
-    logger.info("GeoJSON generation completed successfully")
-    await logging_geojson("generation completed")
-    return feature_collection
-
-# Helper function to generate event-specific GeoJSON
-async def generate_event_geojson(session: AsyncSession, event_type: str, limit: int = 100) -> dict:
-    query = (
-        select(Location)
-        .options(selectinload(Location.entities).selectinload(Entity.contents))
-        .join(EntityLocation, EntityLocation.location_id == Location.id)
-        .join(Entity, Entity.id == EntityLocation.entity_id)
-        .join(ContentEntity, ContentEntity.entity_id == Entity.id)
-        .join(Content, Content.id == ContentEntity.content_id)
-        .join(ContentEvaluation, ContentEvaluation.content_id == Content.id)
-        .where(ContentEvaluation.event_type == event_type)
-        .order_by(Content.insertion_date.desc())
-        .limit(limit)
-    )
-    result = await session.execute(query)
-    locations = result.scalars().unique().all()
-    logger.info(f"Retrieved {len(locations)} locations from database for event type: {event_type}")
-
-    features = []
-    for location in locations:
-        logger.debug(f"Processing location: {location.name}")
-        coordinates = [float(coord) for coord in location.coordinates]
-        point = Point((coordinates[1], coordinates[0]))
-
-        contents = []
-        for entity in location.entities:
-            for content in entity.contents:
-                contents.append({
-                    "url": content.url,
-                    "title": content.title,
-                    "source": content.source,
-                    "insertion_date": content.insertion_date
-                })
-        logger.debug(f"Found {len(contents)} contents for location: {location.name}")
-
-        feature = Feature(
-            geometry=point,
-            properties={
-                "name": location.name,
-                "type": location.location_type,
-                "content_count": len(contents),
-                "contents": contents
-            }
-        )
-        features.append(feature)
-
-    feature_collection = FeatureCollection(features)
-    logger.info(f"Created FeatureCollection with {len(features)} features for event type: {event_type}")
-    await logging_geojson("events generation completed")
-
-    logger.info("GeoJSON generation completed successfully")
-    return feature_collection
-
-
+@app.get("/geojson_events")
+async def get_geojson_events(event_type: str, limit: int = 100, session: AsyncSession = Depends(get_session), background_tasks: BackgroundTasks = None):
+    return await get_dynamic_geojson(event_type=event_type, limit=limit, session=session, background_tasks=background_tasks)

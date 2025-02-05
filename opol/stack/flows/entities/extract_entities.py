@@ -12,9 +12,6 @@ from core.models import Content
 from core.utils import logger, UUIDEncoder, get_redis_url
 from gliner import GLiNER
 
-# Initialize logger
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 class EntityExtractor:
     def __init__(self, model_name: str = "EmergentMethods/gliner_medium_news-v2.1"):
@@ -33,7 +30,7 @@ class EntityExtractor:
     @staticmethod
     def normalize_entity(text: str) -> str:
         """Normalize entity text by removing possessive endings."""
-        return re.sub(r"’s$|\'s$", "", text).strip()
+        return re.sub(r"'s$|\'s$", "", text).strip()
 
     @staticmethod
     def clean_text(text: str) -> str:
@@ -83,90 +80,138 @@ def retrieve_contents(batch_size: int) -> List[Content]:
         redis_conn.close()
 
 @task(log_prints=True)
-def process_content(content: Content, extractor: EntityExtractor) -> Tuple[Content, List[Tuple[str, str]], Set[str], List[str]]:
-    title = extractor.clean_text(content.title) if content.title else ""
-    text_content = extractor.clean_text(content.text_content) if content.text_content else ""
-    full_text = f"{title}. {text_content}".strip()
-    logger.debug(f"Processing Content ID: {content.id} with text length: {len(full_text)}")
+def merge_entities(
+    entities: List[Tuple[str, str]], 
+    extractor: EntityExtractor, 
+    title_entities_texts: List[str],
+    source: str = None
+) -> List[Tuple[str, str, bool]]:
+    """
+    Merges and filters entities by:
+    1) Normalizing duplicates.
+    2) Removing any entity that appears within the source string.
+    3) Removing longer entities if a shorter substring entity is present.
+    4) Marking entities as top if they appear in the title or summary.
+    Returns a list of tuples: (entity_text, label, is_top).
+    """
 
-    entities = extractor.predict_entities(full_text, labels=["person", "location", "geopolitical_entity", "organization"])
-    logger.debug(f"Extracted Entities: {entities}")
-
-    title_entities = extractor.predict_entities(title, labels=["location", "geopolitical_entity"]) if title else []
-    logger.debug(f"Title Entities: {title_entities}")
-
-    title_locations = {extractor.normalize_entity(text) for text, label in title_entities if label in {"location", "geopolitical_entity"}}
-    title_entities_texts = [text for text, _ in title_entities]
-
-    merged_entities = merge_entities(entities, extractor, title_entities_texts)
-    logger.debug(f"Merged Entities: {merged_entities}")
-
-    primary_locations, top_entities_texts = categorize_entities(merged_entities, title_locations)
-    logger.debug(f"Primary Locations: {primary_locations}, Top Entities: {top_entities_texts}")
-
-    return content, merged_entities, primary_locations, top_entities_texts
-
-@task(log_prints=True)
-def merge_entities(entities: List[Tuple[str, str]], extractor: EntityExtractor, title_entities_texts: List[str]) -> List[Tuple[str, str]]:
+    # Step 1: Count occurrences of each normalized entity.
     entity_counts = {}
     for text, label in entities:
         normalized_text = extractor.normalize_entity(text)
         key = (normalized_text, label)
         entity_counts[key] = entity_counts.get(key, 0) + 1
 
-    # Remove filtering conditions; include all entities
-    merged_entities = [
-        (entity, label) for (entity, label), count in entity_counts.items()
-    ]
-    logger.debug(f"Merged entities count: {len(merged_entities)}")
-    return merged_entities
+    # Build an initial list
+    merged_entities = [(k[0], k[1]) for k in entity_counts.keys()]
+
+    # Step 2: Remove any entity that appears within the source string
+    if source:
+        # Normalize the source
+        normalized_source = extractor.normalize_entity(source).lower()
+        # Extract words/entities from the source
+        # This regex extracts word boundaries; adjust as necessary
+        source_entities = set(re.findall(r'\b\w+\b', normalized_source))
+        logger.debug(f"Source entities to exclude: {source_entities}")
+
+        # Remove entities that match any word in the source
+        merged_entities = [
+            (text, label)
+            for (text, label) in merged_entities
+            if extractor.normalize_entity(text).lower() not in source_entities
+        ]
+
+    # Step 3: Remove longer entities if a shorter substring entity exists
+    merged_entities_sorted = sorted(merged_entities, key=lambda x: len(x[0]))
+    to_remove = set()
+    for i, (ent_i, label_i) in enumerate(merged_entities_sorted):
+        for j, (ent_j, label_j) in enumerate(merged_entities_sorted):
+            if i != j and ent_i in ent_j and ent_i != ent_j:
+                to_remove.add((ent_j, label_j))
+
+    filtered_entities = [item for item in merged_entities_sorted if item not in to_remove]
+
+    # Step 4: Mark as top if present in title_entities_texts
+    final_entities = []
+    for (text, label) in filtered_entities:
+        is_top = text in title_entities_texts
+        final_entities.append((text, label, is_top))
+
+    logger.debug(f"Final merged entities: {final_entities}")
+    return final_entities
 
 @task(log_prints=True)
-def categorize_entities(merged_entities: List[Tuple[str, str]], title_locations: Set[str]) -> Tuple[Set[str], List[str]]:
-    location_counts = {}
-    entity_counts = {}
+def process_content(content: Content, extractor: EntityExtractor) -> Tuple[
+    Content,
+    List[Tuple[str, str, bool]],
+    Set[str],
+    List[str],
+    Set[str]
+]:
+    # Clean up text from title, text_content, meta_summary, etc.
+    title = extractor.clean_text(content.title) if content.title else ""
+    meta_summary = extractor.clean_text(content.meta_summary) if content.meta_summary else ""
+    text_content = extractor.clean_text(content.text_content) if content.text_content else ""
 
-    for entity, label in merged_entities:
-        if label in {"location", "geopolitical_entity"}:
-            location_counts[entity] = location_counts.get(entity, 0) + 1
-        entity_counts[entity] = entity_counts.get(entity, 0) + 1
+    # Combine everything for overall entity detection.
+    full_text = f"{title}. {meta_summary}. {text_content}".strip()
+    logger.debug(f"Processing Content ID: {content.id} with text length: {len(full_text)}")
 
-    for loc in title_locations:
-        location_counts[loc] = location_counts.get(loc, 0) + 10  # Boost title locations
+    # Extract all entities from the full_text
+    entities = extractor.predict_entities(full_text, labels=["person", "location", "geopolitical_entity", "organization"])
+    logger.debug(f"Extracted Entities: {entities}")
 
-    sorted_locations = sorted(location_counts.items(), key=lambda item: (item[0] in title_locations, item[1]), reverse=True)
-    primary_locations = {loc for loc, _ in sorted_locations[:2]}
+    # Extract entities from title and meta_summary for top marking
+    top_entities_from_title = extractor.predict_entities(title, labels=["person", "location", "geopolitical_entity", "organization"])
+    top_entities_from_summary = extractor.predict_entities(meta_summary, labels=["person", "location", "geopolitical_entity", "organization"]) if meta_summary else []
 
-    top_entities = list(dict.fromkeys([
-        entity for entity in title_locations if entity in entity_counts
-    ]))
-    additional_entities = [
-        entity for entity, count in entity_counts.items()
-        if count > 1 and entity not in top_entities
-    ]
-    top_entities.extend(sorted(additional_entities, key=lambda e: entity_counts[e], reverse=True)[:5 - len(top_entities)])
-    logger.debug(f"Primary Locations: {primary_locations}, Top Entities: {top_entities}")
-    return primary_locations, top_entities
+    # Merge top entities from title and meta_summary
+    combined_top_entities = list(set(top_entities_from_title + top_entities_from_summary))
+    top_entities_texts = [extractor.normalize_entity(t[0]) for t in combined_top_entities]
+
+    # Merged entities now carry an is_top field
+    merged_entities = merge_entities(entities, extractor, top_entities_texts, source=content.source)
+
+    # For "top locations" we only use ones that appear in "combined_top_entities" and have label in {"location", "geopolitical_entity"}:
+    top_locations = {
+        extractor.normalize_entity(text)
+        for text, label, is_top in merged_entities 
+        if is_top and label in {"location", "geopolitical_entity"}
+    }
+
+    # For the sake of storing them in Redis, we keep the entire set of all recognized locations in all_locations
+    all_locations = {
+        extractor.normalize_entity(text)
+        for text, label, is_top in merged_entities 
+        if label in {"location", "geopolitical_entity"}
+    }
+
+    logger.debug(f"Top Locations: {top_locations}, Top Entities: {[text for text, _, _ in merged_entities if _]}")
+    return content, merged_entities, top_locations, top_entities_texts, all_locations
 
 @task(log_prints=True, cache_policy=None)
-def push_entities(contents_with_entities: List[Tuple[Content, List[Tuple[str, str]], Set[str], List[str]]]):
+def push_entities(contents_with_entities: List[Tuple[Content, List[Tuple[str, str, bool]], Set[str], List[str], Set[str]]]):
     try:
         redis_conn = Redis.from_url(get_redis_url(), db=2, decode_responses=True)
-        pipe = redis_conn.pipeline()
-        for content, entities, primary_locations, top_entities_texts in contents_with_entities:
+        for content, entities, top_locations, top_entities_texts, all_locations in contents_with_entities:
             content_data = content.model_dump()
             content_data.update({
-                'entities': [{"text": text, "tag": label} for text, label in entities],
-                'top_locations': list(primary_locations),
-                'top_entities': top_entities_texts
+                'entities': [
+                    {"text": text, "tag": label, "is_top": is_top}
+                    for (text, label, is_top) in entities
+                ],
+                'top_locations': list(top_locations),
+                'locations': list(all_locations),
+                # 'top_entities' no longer needed if we store is_top in each entity,
+                # but you can keep it if needed for reference
+                'top_entities': list(set(top_entities_texts)),
             })
-            pipe.lpush('contents_with_entities_queue', json.dumps(content_data, cls=UUIDEncoder))
-            logger.info(f"Pushed Content ID {content.id} to Redis queue.")
-        pipe.execute()
+
+            redis_conn.lpush('contents_with_entities_queue', json.dumps(content_data, cls=UUIDEncoder))
+            logger.info(f"Pushed Content ID {content.id} to queue.")
+        redis_conn.close()
     except RedisError as e:
         logger.error(f"Redis error while pushing entities: {e}")
-    finally:
-        redis_conn.close()
 
 @flow(log_prints=True)
 def extract_entities_flow(batch_size: int = 50):
@@ -178,13 +223,12 @@ def extract_entities_flow(batch_size: int = 50):
 
     extractor = EntityExtractor()
     processed_contents = [process_content(content, extractor) for content in contents]
-    logger.error(f"Processed contents: {processed_contents[:2]}")
+
+    logger.info(f"Processed {len(processed_contents)} contents.")
+    logger.info(f"First content: {processed_contents[0]}")
+    # Uncomment the following line if you want to push entities to Redis, comment out for testing
     push_entities(processed_contents)
     logger.info("Entity extraction flow completed successfully.")
 
 # if __name__ == "__main__":
-#     extract_entities_flow.serve(
-#         name="extract-entities-deployment",
-#         cron="0/7 * * * *", # every 7 minutes
-#         parameters={"batch_size": 20}
-#     )
+#     extract_entities_flow(2)

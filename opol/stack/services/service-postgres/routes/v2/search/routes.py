@@ -24,12 +24,31 @@ from core.models import (
 )
 from core.service_mapping import config
 from core.utils import logger
+import uuid
 
 from opol import OPOL
 import os
 opol = OPOL(mode=os.getenv("OPOL_MODE"), api_key=os.getenv("OPOL_API_KEY"))
 
 router = APIRouter()
+
+
+## All routes in this file:
+# /api/v2/search/contents
+# /api/v2/search/related_entities/{query}
+# /api/v2/search/entities/{entity_id}
+
+# /api/v2/search/contents_by_entity/{entity_name}
+# /api/v2/search/location_entities/{location_name}
+
+# /api/v2/search/most_relevant_entities
+# /api/v2/search/entity_score
+# /api/v2/search/top_entities_by_score
+
+# /api/v2/search/basic/contents
+# /api/v2/search/basic/contents_by_entity/{entity_name}
+# /api/v2/search/basic/location_entities/{location_name}
+
 
 
 # ----------------------------
@@ -70,12 +89,14 @@ class ContentsQueryParams(BaseModel):
         return v
 
 
+# f: List[Articles] -> List[Entities]
 class MostRelevantEntitiesRequest(BaseModel):
     article_ids: List[str]
     skip: int = 0
     limit: int = 10
 
 
+# f: Entity -> Entity / Timeframe -> List[Entity[Contents[Score]][time_point]]]
 class EntityScoreRequest(BaseModel):
     entity: str
     score_type: str
@@ -152,8 +173,9 @@ def apply_search_filters(query, search_query: Optional[str], search_type: Search
         )
         return query.where(search_condition)
     elif search_type.lower() == 'semantic':
-        from opol.api.embeddings import EmbeddingTypes
-        embeddings = opol.embeddings.generate(search_query, EmbeddingTypes.QUERY)
+        from opol.api.embeddings import Embeddings
+        embedder = Embeddings(mode="local", use_api=True, api_provider="jina", api_provider_key=os.getenv("JINA_API_KEY"))
+        embeddings = embedder.generate(search_query, "retrieval.query")
         # Modify the query to include distance calculation
         return (
             select(
@@ -316,13 +338,24 @@ async def get_contents(
 ):
     try:
         async with session.begin():
-            # Base query with eager loading
-            query = select(Content).options(
-                selectinload(Content.entities).selectinload(Entity.locations),
-                selectinload(Content.tags),
-                selectinload(Content.evaluation),
-                selectinload(Content.media_details)
-            )
+            from opol.api.embeddings import EmbeddingTypes, Embeddings
+            embedder = Embeddings(mode="local", use_api=True, api_provider="jina", api_provider_key=os.getenv("JINA_API_KEY"))
+            query_embeddings = embedder.generate(params.search_query, "retrieval.query")
+            
+            query = (
+                    select(
+                        Content,
+                        Content.embeddings.cosine_distance(query_embeddings).label('distance')
+                    )
+                    .options(
+                        selectinload(Content.entities).selectinload(Entity.locations),
+                        selectinload(Content.tags),
+                        selectinload(Content.evaluation),
+                        selectinload(Content.media_details)
+                    )
+                    .order_by('distance')  # Order by the labeled distance
+                    .distinct()
+                )
 
             # Apply date filters
             query = apply_date_filters(query, params.from_date, params.to_date)
@@ -535,10 +568,11 @@ async def get_most_relevant_entities(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+
 #### Articles By Entity
-@router.get("/contents_by_entity/{entity_name}")
+@router.get("/contents_by_entity/{entity}")
 async def get_articles_by_entity(
-    entity_name: str,
+    entity: str,
     skip: int = 0,
     limit: int = 10,
     session: AsyncSession = Depends(get_session)
@@ -555,7 +589,7 @@ async def get_articles_by_entity(
             )
             .join(ContentEntity, Content.id == ContentEntity.content_id)
             .join(Entity, ContentEntity.entity_id == Entity.id)
-            .where(Entity.name == entity_name)
+            .where(Entity.name == entity)
             .distinct()
             .offset(skip)
             .limit(limit)
@@ -564,45 +598,60 @@ async def get_articles_by_entity(
         result = await session.execute(query)
         contents = result.unique().scalars().all()
 
-        contents_data = [
-            {
-                "id": str(content.id),
-                "url": content.url,
-                "title": content.title,
-                "source": content.source,
-                "insertion_date": content.insertion_date if content.insertion_date else None,
-                "text_content": content.text_content,
-                "top_image": content.media_details.top_image if content.media_details else None,
-                "entities": [
-                    {
-                        "id": str(e.id),
-                        "name": e.name,
-                        "entity_type": e.entity_type,
-                        "locations": [
-                            {
-                                "name": loc.name,
-                                "location_type": loc.location_type,
-                                "coordinates": loc.coordinates.tolist() if loc.coordinates else None
-                            } for loc in e.locations
-                        ] if e.locations else []
-                    } for e in content.entities
-                ] if content.entities else [],
-                "tags": [
-                    {
-                        "id": str(t.id),
-                        "name": t.name
-                    } for t in (content.tags or [])
-                ],
-                "evaluation": content.evaluation.dict() if content.evaluation else None
-            }
-            for content in contents
-        ]
+        # contents_data = [
+        #     {
+        #         "id": str(content.id),
+        #         "url": content.url,
+        #         "title": content.title,
+        #         "source": content.source,
+        #         "insertion_date": content.insertion_date if content.insertion_date else None,
+        #         "text_content": content.text_content,
+        #         "top_image": content.media_details.top_image if content.media_details else None,
+        #         "entities": [
+        #             {
+        #                 "id": str(e.id),
+        #                 "name": e.name,
+        #                 "entity_type": e.entity_type,
+        #                 "locations": [
+        #                     {
+        #                         "name": loc.name,
+        #                         "location_type": loc.location_type,
+        #                         "coordinates": loc.coordinates.tolist() if loc.coordinates else None
+        #                     } for loc in e.locations
+        #                 ] if e.locations else []
+        #             } for e in content.entities
+        #         ] if content.entities else [],
+        #         "tags": [
+        #             {
+        #                 "id": str(t.id),
+        #                 "name": t.name
+        #             } for t in (content.tags or [])
+        #         ],
+        #         "evaluation": content.evaluation.model_dump() if content.evaluation else None
+        #     }
+        #     for content in contents
+        # ]
 
-        logger.info(f"Returning {len(contents_data)} articles for entity '{entity_name}'")
-        return contents_data
+        # from opol import OPOL
+        # opol = OPOL(mode="container")
+        # texts = [article['title'] for article in contents]
+        # reranked_titles = opol.embeddings.rerank(f"Political News about {entity}", texts)
+        # logger.info(f"Returning {len(contents)} articles for entity '{entity}'")
+        # return reranked_titles
+
+        ## RERANKING
+
+        # texts = [article.content for article in articles[:10]]
+
+        # query = "This article talks about finance and the german elections."
+        # reranked_passages = opol.embeddings.rerank(query, texts)
+        # print(reranked_passages)
+
+        return contents
+
 
     except Exception as e:
-        logger.error(f"Error retrieving articles for entity '{entity_name}': {e}", exc_info=True)
+        logger.error(f"Error retrieving articles for entity '{entity}': {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error retrieving articles")
 
 

@@ -17,19 +17,13 @@ class ContentEntity(SQLModel, table=True):
     content_id: uuid.UUID = Field(foreign_key="content.id", primary_key=True)
     entity_id: uuid.UUID = Field(foreign_key="entity.id", primary_key=True)
     frequency: int = Field(default=1)
-
-class TopContentEntity(SQLModel, table=True):
-    content_id: uuid.UUID = Field(foreign_key="content.id", primary_key=True)
-    entity_id: uuid.UUID = Field(foreign_key="entity.id", primary_key=True)
+    is_top: bool = Field(default=False)  # New field indicating if the entity is a "top" entity for the content
 
 class ContentLocation(SQLModel, table=True):
     content_id: uuid.UUID = Field(foreign_key="content.id", primary_key=True)
     location_id: uuid.UUID = Field(foreign_key="location.id", primary_key=True)
     frequency: int = Field(default=1)
-
-class TopContentLocation(SQLModel, table=True):
-    content_id: uuid.UUID = Field(foreign_key="content.id", primary_key=True)
-    location_id: uuid.UUID = Field(foreign_key="location.id", primary_key=True)
+    is_top_location: bool = Field(default=False)
 
 class ContentTag(SQLModel, table=True):
     content_id: uuid.UUID = Field(foreign_key="content.id", primary_key=True)
@@ -59,6 +53,7 @@ class Content(BaseModel, table=True):
     content_language: Optional[str] = Field(default=None, index=True)
     author: Optional[str] = Field(default=None, index=True)
     publication_date: Optional[str] = Field(default=None, index=True)
+    last_updated: Optional[str] = Field(default=None, index=True)
     version: int = Field(default=1)
     is_active: bool = Field(default=True)
     summary: Optional[str] = Field(default=None, sa_column=Column(Text))
@@ -67,35 +62,27 @@ class Content(BaseModel, table=True):
     # Embeddings at the content level
     embeddings: Optional[List[float]] = Field(default=None, sa_column=Column(Vector(1024)))
 
-    # Separate Relationships
+    # Relationships
     entities: List["Entity"] = Relationship(
         back_populates="contents", link_model=ContentEntity
-    )
-    top_entities: List["Entity"] = Relationship(
-        back_populates="top_contents", link_model=TopContentEntity
     )
     locations: List["Location"] = Relationship(
         back_populates="contents", link_model=ContentLocation
     )
-    top_locations: List["Location"] = Relationship(
-        back_populates="top_contents", link_model=TopContentLocation
+    tags: List["Tag"] = Relationship(
+        back_populates="contents", link_model=ContentTag
     )
-
-    # Relationships
-    media_details: Optional["MediaDetails"] = Relationship(
-        back_populates="content", sa_relationship_kwargs={"uselist": False}
+    topics: List["Topic"] = Relationship(
+        back_populates="contents", link_model=ContentTopic
     )
-    tags: List["Tag"] = Relationship(back_populates="contents", link_model=ContentTag)
-
-
-    topics: List["Topic"] = Relationship(back_populates="contents", link_model=ContentTopic)
-
     xclassifications: List["XClassification"] = Relationship(back_populates="content")
-
     evaluation: Optional["ContentEvaluation"] = Relationship(
         back_populates="content", sa_relationship_kwargs={"uselist": False}
     )
-
+    media_details: Optional["MediaDetails"] = Relationship(
+        back_populates="content", sa_relationship_kwargs={"uselist": False}
+    )
+    # chunks: List["ContentChunk"] = Relationship(back_populates="content")  # Commented out for potential future use
 
 class MediaDetails(SQLModel, table=True):
     id: Optional[uuid.UUID] = Field(default_factory=uuid.uuid4, primary_key=True)
@@ -148,10 +135,9 @@ class Entity(BaseModel, table=True):
     contents: List[Content] = Relationship(
         back_populates="entities", link_model=ContentEntity
     )
-    top_contents: List[Content] = Relationship(
-        back_populates="top_entities", link_model=TopContentEntity
+    locations: List["Location"] = Relationship(
+        back_populates="entities", link_model=EntityLocation
     )
-    locations: List["Location"] = Relationship(back_populates="entities", link_model=EntityLocation)
 
 class Location(BaseModel, table=True):
     name: str = Field(index=True)
@@ -160,8 +146,9 @@ class Location(BaseModel, table=True):
     weight: float = Field(default=0.0)
 
     entities: List[Entity] = Relationship(back_populates="locations", link_model=EntityLocation)
-    contents: List[Content] = Relationship(back_populates="locations", link_model=ContentLocation)
-    top_contents: List[Content] = Relationship(back_populates="top_locations", link_model=TopContentLocation)
+    contents: List[Content] = Relationship(
+        back_populates="locations", link_model=ContentLocation
+    )
 
 class Tag(BaseModel, table=True):
     name: str = Field(unique=True, index=True)
@@ -203,7 +190,6 @@ class Topic(BaseModel, table=True):
     # Relationships
     contents: List["Content"] = Relationship(back_populates="topics", link_model=ContentTopic)
 
-# New Model
 class ContentEvaluation(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     content_id: uuid.UUID = Field(foreign_key="content.id")
@@ -230,3 +216,4 @@ class ContentEvaluation(SQLModel, table=True):
 
     # Relationships
     content: Content = Relationship(back_populates="evaluation")
+

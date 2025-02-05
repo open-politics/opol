@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException, Query
+from datetime import datetime
 from redis.asyncio import Redis
 from contextlib import asynccontextmanager
 import logging
@@ -104,10 +105,10 @@ async def scrape_article(url: str = Query(..., description="The URL of the artic
         text = article.text if article.text else None
         url = article.url if article.url else None
         top_image = article.top_image if "placeholder" not in article.top_image else None
-        summary = article.meta_description if "dw.com" in url or "cnn.com" in url else article.summary if article.summary else None
+        images = [img for img in article.images if "placeholder" not in img]
         meta_summary = None if "dw.com" in url or "cnn.com" in url else article.meta_description if article.meta_description else None
+        summary = article.meta_description if "dw.com" in url or "cnn.com" in url else article.summary if article.summary else None
         logger.info(f"Extracted top image: {top_image}")
-        
         publication_date = article.publish_date.isoformat() if article.publish_date else None
         logger.info(f"Extracted publication date: {publication_date}")
 
@@ -115,9 +116,11 @@ async def scrape_article(url: str = Query(..., description="The URL of the artic
             "url": url,
             "text_content": text,
             "top_image": top_image,
+            "images": images,
             "publication_date": publication_date,
             "summary": summary,
-            "meta_summary": meta_summary
+            "meta_summary": meta_summary,
+            "last_updated": datetime.now().strftime("%Y-%m-%d")
         }
         logger.info(f"Successfully scraped article with response: {response}")
         return response

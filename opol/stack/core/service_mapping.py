@@ -4,56 +4,40 @@ class ServiceConfig:
     ## Service Ports
 
     CORE_APP_PORT = os.getenv('CORE_APP_PORT', '8089')
-    POSTGRES_SERVICE_PORT = os.getenv('POSTGRES_SERVICE_PORT', '5434')
+    CLASSIFICATION_SERVICE_PORT = os.getenv('CLASSIFICATION_SERVICE_PORT', '5688')
     EMBEDDING_SERVICE_PORT = os.getenv('EMBEDDING_SERVICE_PORT', '0420')
-    SCRAPER_SERVICE_PORT = os.getenv('SCRAPER_SERVICE_PORT', '8081')
     ENTITY_SERVICE_PORT = os.getenv('ENTITY_SERVICE_PORT', '1290')
     GEO_SERVICE_PORT = os.getenv('GEO_SERVICE_PORT', '3690')
-    REDIS_PORT = os.getenv('REDIS_PORT', '6379')
-    PREFECT_SERVER_PORT = os.getenv('PREFECT_SERVER_PORT', '4200')
+    OLLAMA_PORT = os.getenv('OLLAMA_PORT', '11434')
     PELIAS_PLACEHOLDER_PORT = os.getenv('PELIAS_PLACEHOLDER_PORT', '3999')
-
-
-    # SEARXNG
+    POSTGRES_SERVICE_PORT = os.getenv('POSTGRES_SERVICE_PORT', '5434')
+    PREFECT_SERVER_PORT = os.getenv('PREFECT_SERVER_PORT', '4200')
+    REDIS_PORT = os.getenv('REDIS_PORT', '6379')
+    SCRAPER_SERVICE_PORT = os.getenv('SCRAPER_SERVICE_PORT', '8081')
     SEARXNG_PORT = os.getenv('SEARXNG_PORT', '8021')
 
-    ## OLLAMA
-    OLLAMA_PORT = os.getenv('OLLAMA_PORT', '11434')
-
     # Database configurations
-    R2R_DB_USER = os.getenv('R2R_DB_USER', 'r2r_user')
-    R2R_DB_PASSWORD = os.getenv('R2R_DB_PASSWORD', 'r2r_password')
-    R2R_DB_NAME = os.getenv('R2R_DB_NAME', 'r2r_db')
-    R2R_DB_PORT = os.getenv('R2R_DB_PORT', '5432')
-
+    ARTICLES_DB_USER = os.getenv('ARTICLES_DB_USER', 'articles_user')
+    ARTICLES_DB_PASSWORD = os.getenv('ARTICLES_DB_PASSWORD', 'articles_password')
+    ARTICLES_DB_NAME = os.getenv('ARTICLES_DB_NAME', 'articles_db')
+    ARTICLES_DB_PORT = os.getenv('ARTICLES_DB_PORT', '5473') ## THIS IS THE MAIN DATABASE
+    DB_MODE = os.getenv('DB_MODE', 'managed')
+    MANAGED_ARTICLES_DB_HOST = os.getenv('MANAGED_ARTICLES_DB_HOST', 'x')
+    MANAGED_ARTICLES_DB_PORT = os.getenv('MANAGED_ARTICLES_DB_PORT', '5473')
+    MANAGED_ARTICLES_DB_USER = os.getenv('MANAGED_ARTICLES_DB_USER', 'x')
+    MANAGED_ARTICLES_DB_PASSWORD = os.getenv('MANAGED_ARTICLES_DB_PASSWORD', 'x')
     PREFECT_DB_USER = os.getenv('PREFECT_DB_USER', 'prefect_user')
     PREFECT_DB_PASSWORD = os.getenv('PREFECT_DB_PASSWORD', 'prefect_password')
     PREFECT_DB_NAME = os.getenv('PREFECT_DB_NAME', 'prefect_db')
     PREFECT_DB_PORT = os.getenv('PREFECT_DB_PORT', '5433')
 
-    ARTICLES_DB_USER = os.getenv('ARTICLES_DB_USER', 'articles_user')
-    ARTICLES_DB_PASSWORD = os.getenv('ARTICLES_DB_PASSWORD', 'articles_password')
-    ARTICLES_DB_NAME = os.getenv('ARTICLES_DB_NAME', 'articles_db')
-    ARTICLES_DB_PORT = os.getenv('ARTICLES_DB_PORT', '5473') ## THIS IS THE MAIN DATABASE
-
-
-    # DB Mode
-    DB_MODE = os.getenv('DB_MODE', 'managed')
-
     # Redis Mode
     REDIS_MODE = os.getenv('REDIS_MODE', 'managed')
-
-
-    # Managed Database Configurations
-    MANAGED_ARTICLES_DB_HOST = os.getenv('MANAGED_ARTICLES_DB_HOST', 'x')
-    MANAGED_ARTICLES_DB_PORT = os.getenv('MANAGED_ARTICLES_DB_PORT', '5473')
-    MANAGED_ARTICLES_DB_USER = os.getenv('MANAGED_ARTICLES_DB_USER', 'x')
-    MANAGED_ARTICLES_DB_PASSWORD = os.getenv('MANAGED_ARTICLES_DB_PASSWORD', 'x')
 
     # Managed Redis Configuration
     MANAGED_REDIS_HOST = os.getenv('MANAGED_REDIS_HOST', 'x')
     MANAGED_REDIS_PORT = os.getenv('MANAGED_REDIS_PORT', '6379')
-    
+
     # Determine if running in Kubernetes or Docker Compose
     RUNNING_ENV = os.getenv('RUNNING_ENV', 'compose')
 
@@ -117,16 +101,7 @@ class ServiceConfig:
         "failed_geocodes_queue": {"db": 6, "key": "failed_geocodes_queue", "type": "list"},
     }
 
-
-    # Other configurations/ API Keys
-    OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-    HUGGINGFACE_TOKEN = os.getenv('HUGGINGFACE_TOKEN')
-    CONFIG_OPTION = os.getenv('CONFIG_OPTION', 'default')
-
-
-
 config = ServiceConfig()
-
 
 def get_db_url():
     """Get database URL based on mode"""

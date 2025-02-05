@@ -23,10 +23,9 @@ COPY services/service-postgres .
 
 # Copy the core directory
 COPY ../../core/ ./core
+COPY ../../library/ ./library
 
-# Copy the alembic directory
-COPY services/service-postgres/alembic ./alembic
-COPY services/service-postgres/start.sh .
-RUN chmod +x start.sh
 
-CMD ["./start.sh"]
+RUN chmod +x start-reload.sh start.sh
+
+CMD ["./start-reload.sh"]

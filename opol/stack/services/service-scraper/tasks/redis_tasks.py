@@ -13,7 +13,7 @@ def save_contents_to_redis(contents: List[Content]):
     try:
         for content in contents:
             if content.url not in redis_conn.lrange('raw_contents_queue', 0, -1):
-                redis_conn.rpush('raw_contents_queue', content.json())
+                redis_conn.rpush('raw_contents_queue', content.model_dump_json())
         logger.info(f"Saved {len(contents)} contents to Redis.")
     except Exception as e:
         logger.error(f"Error saving contents to Redis: {e}")

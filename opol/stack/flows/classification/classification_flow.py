@@ -22,10 +22,6 @@ opol = OPOL(api_key=os.environ["OPOL_API_KEY"])
 # Initialize Classification Service
 xclass = opol.classification(provider="Google", model_name="models/gemini-1.5-flash-latest", llm_api_key=os.environ["GOOGLE_API_KEY"])
 
-
-
-
-
 @task(log_prints=True)
 async def retrieve_contents_from_redis(batch_size: int) -> List[Content]:
     """Retrieve contents from Redis queue asynchronously."""
@@ -245,9 +241,5 @@ async def process_content(content):
         logger.error(f"Error: {e}")
         return None
 
-# if __name__ == "__main__":
-#     asyncio.run(classify_contents_flow.serve(
-#         name="classify-contents-deployment",
-#         cron="*/10 * * * *", 
-#         parameters={"batch_size": 4}
-#     ))    
+if __name__ == "__main__":
+    asyncio.run(classify_contents_flow(batch_size=40))    
