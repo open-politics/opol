@@ -1,0 +1,142 @@
+name: opol-flows
+prefect-version: 3.10.0
+
+pull: 
+  - prefect.deployments.steps.set_working_directory:
+      directory: .
+
+deployments:
+
+  - name: meta
+    entrypoint: ./flows/orchestration/orchestration.py:meta_flow
+    work_pool:
+      name: local-docker-pool
+      job_variables:
+        image: runner-all-flows:latest
+        image_pull_policy: "Never"
+        auto_remove: true
+        env:
+          REDIS_PORT: "6379"
+          REDIS_URL: "redis://engine-redis:6379"
+        networks:
+          - opol-app-stack
+    version: "1.0.0"
+    tags: ["dev", "docker", "core-processing-flows"]
+    description: The main flow to orchestrate all flows.
+    enforce_parameter_schema: true
+    schedules:
+      - cron: "*/5 * * * *" # Run every 5 minutes
+
+  - name: scraping
+    entrypoint: ./flows/scraping/scrape_newssites.py:scrape_newssites_flow
+    parameters:
+      flags: ["cnn", "dw", "bbc"]
+    work_pool:
+      name: local-docker-pool
+      job_variables:
+        image: runner-scraping-flow:latest
+        image_pull_policy: "Never"
+        auto_remove: true
+        env:
+          REDIS_PORT: "6379"
+          REDIS_URL: "redis://engine-redis:6379"
+          OPOL_MODE: "container"
+        networks:
+          - opol-app-stack
+    version: "1.0.0"
+    tags: ["dev", "docker", "core-processing-flows"]
+    description: The main flow to scrape newssites.
+    enforce_parameter_schema: true
+    schedules:
+      - cron: "*/30 * * * *" # Run every 30 minutes
+
+  
+
+  - name: entities
+    entrypoint: ./flows/entities/extract_entities.py:extract_entities_flow
+    work_pool:
+      name: local-docker-pool
+      job_variables:
+        image: runner-entities-flow:latest
+        image_pull_policy: "Never"
+        auto_remove: true
+        env:
+          REDIS_PORT: "6379"
+          REDIS_URL: "redis://engine-redis:6379"
+          PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION: "python"
+        networks:
+          - opol-app-stack
+    version: "1.0.0"
+    tags: ["dev", "docker", "core-processing-flows"]
+    description: The main flow to extract entities.
+    enforce_parameter_schema: true
+    schedules:
+      - cron: "0 * * * *" # Run every hour
+  
+  - name: embeddings
+    entrypoint: ./flows/embeddings/generate_embeddings.py:generate_embeddings_flow
+    work_pool:
+      name: local-docker-pool
+      job_variables:
+        image: runner-embeddings-flow:latest
+        image_pull_policy: "Never"
+        auto_remove: true
+        env:
+          REDIS_PORT: "6379"
+          REDIS_URL: "redis://engine-redis:6379"
+          EMBEDDING_MODEL_NAME: "jinaai/jina-embeddings-v3"
+        networks:
+          - opol-app-stack
+    version: "1.0.0"
+    tags: ["dev", "docker", "core-processing-flows"]
+    description: The main flow to generate embeddings.
+    enforce_parameter_schema: true
+    schedules:
+      - cron: "0 * * * *" # Run every hour
+
+  - name: geocoding
+    entrypoint: ./flows/geocoding/geocode_locations.py:geocode_locations_flow
+    parameters:
+      batch_size: 200
+    work_pool:
+      name: local-docker-pool
+      job_variables:
+        image: runner-all-flows:latest
+        image_pull_policy: "Never"
+        auto_remove: true
+        env:
+          REDIS_PORT: "6379"
+          REDIS_URL: "redis://engine-redis:6379"
+        networks:
+          - opol-app-stack
+    version: "1.0.0"
+    tags: ["dev", "docker", "core-processing-flows"]
+    description: The main flow to geocode locations.
+    enforce_parameter_schema: true
+    schedules:
+      - cron: "0 * * * *" # Run every hour
+
+  - name: classification
+    entrypoint: ./flows/classification/classification_flow.py:classify_contents_flow
+    parameters:
+      batch_size: 20
+    work_pool:
+      name: local-docker-pool
+      job_variables:
+        image: runner-all-flows:latest
+        image_pull_policy: "Never"
+        auto_remove: true
+        env:
+          REDIS_PORT: "6379"
+          REDIS_URL: "redis://engine-redis:6379"
+          OPOL_MODE: "container"
+          LOCAL_LLM: "True"
+          LOCAL_LLM_MODEL: "llama3.2:latest"
+        networks:
+          - opol-app-stack
+    version: "1.0.0"
+    tags: ["dev", "docker", "core-processing-flows"]
+    description: The main flow to classify contents.
+    enforce_parameter_schema: true
+    schedules:
+      - cron: "0 * * * *" 
