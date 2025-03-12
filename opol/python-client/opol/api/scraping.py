@@ -27,3 +27,5 @@ class Scraping(BaseClient):
         endpoint = f"/scrape_article"
         params = {"url": url}
         return self.get(endpoint, params)
+
+

@@ -1,9 +1,11 @@
 from typing import Any, Dict, Type, Union, List, Optional
 from pydantic import BaseModel, create_model, Field
+from openai import OpenAI
 import inspect
 import google.generativeai as genai
 import instructor
 import os
+
 # A small helper map from string -> Python type
 BUILTIN_TYPES: Dict[str, Any] = {
     "int": int,
@@ -12,6 +14,13 @@ BUILTIN_TYPES: Dict[str, Any] = {
     "bool": bool,
 }
 
+provider_model_map = {
+    "google": "gemini-2.0-flash-latest",
+    "ollama": "llama3.2:latest",
+    "groq": "llama3.2:latest",
+}
+
+
 
 class FastClass:
     """
@@ -19,19 +28,37 @@ class FastClass:
     It can accept either a string-based type definition or a full Pydantic model.
     """
 
-    def __init__(self, provider: str = "Google", model_name: str = "models/gemini-1.5-flash-latest", llm_api_key: str = None):
+    def __init__(self, provider: str = "Google", model_name: str = "models/gemini-2.0-flash-latest", llm_api_key: str = None):
         # Initialize LLM client
-        if provider == "Google":
-            if llm_api_key is None:
-                if os.environ["GOOGLE_API_KEY"] is None:
-                    raise ValueError("Google API key is required")
-                else:
-                    llm_api_key = os.environ["GOOGLE_API_KEY"]
+        self.provider = provider.lower()
+        self.model_name = model_name
+        if self.provider == "google":
+            llm_api_key = llm_api_key or os.environ.get("GOOGLE_API_KEY")
+            if not llm_api_key:
+                raise ValueError("Google API key is required")
             genai.configure(api_key=llm_api_key)
-        self.client = instructor.from_gemini(
-            client=genai.GenerativeModel(model_name=model_name),
-            mode=instructor.Mode.GEMINI_JSON,
-        )
+            self.client = instructor.from_gemini(
+                client=genai.GenerativeModel(model_name=self.model_name),
+                mode=instructor.Mode.GEMINI_JSON,
+            )
+        elif self.provider == "ollama":
+            self.client = instructor.from_openai(
+                OpenAI(
+                    base_url={
+                        "container": "http://ollama:11434/v1",
+                        "local": "http://localhost:11434/v1"
+                    }.get(os.environ.get("OPOL_MODE", ""), None),
+                    api_key='ollama',
+                ),
+                mode=instructor.Mode.JSON,
+            )
+        else:
+            raise ValueError(f"Unsupported provider: {provider}")
+    
+    # Central available providers
+    @staticmethod
+    def available_providers():
+        return list(provider_model_map.keys())
 
     def infer(
         self,
@@ -62,12 +89,23 @@ class FastClass:
             response_model = type_or_model
 
         # 3) Call the LLM and parse JSON → Pydantic
-        llm_response = self.client.messages.create(
-            messages=[
-                {"role": "user", "content": combined_prompt}
-            ],
-            response_model=response_model,
-        )
+        if self.provider == "google":
+            llm_response = self.client.messages.create(
+                messages=[
+                    {"role": "user", "content": combined_prompt}
+                ],
+                response_model=response_model,
+            )
+        elif self.provider == "ollama":
+            llm_response = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=[
+                    {"role": "user", "content": combined_prompt}
+                ],
+                response_model=response_model,
+            )
+        else:
+            raise ValueError(f"Unsupported provider: {self.provider}")
 
         # 4) If it was a single-field dynamic model, extract that field value. Otherwise return model instance.
         if isinstance(type_or_model, str):
