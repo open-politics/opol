@@ -6,10 +6,7 @@ This guide provides an overview of the services, tasks, and flows used to orches
 
 If something is unclear, missing documentation, or unnecessarily hard to get into, please let us know via a GitHub Issue! <3
 
---- 
-| Note |  |
-|------|-------------|
-| This documentation concentrates on the **stack**. If you want to learn more about the python client used to interact with the stack please visit [this page](../python-client/README.md) |
+> This documentation concentrates on the **stack**. If you want to learn more about the python client used to interact with the stack please visit [this page](../python-client/README.md) 
 
 ## Table of Contents
 - [Overview](#overview)
@@ -36,20 +33,15 @@ git clone https://github.com/open-politics/opol.git
 cd opol/opol/stack
 ```
 
-### 2. Boot up the containers
-```bash
-docker compose -f compose.local.yml up -d
-```
-
-### 3. Run the boot script (in another shell)
+### 2. Run the boot script (in another shell)
 Installs prefect via pip, sets the client url to the local prefect server, deploys the data pipelines and triggers a few them directly.
 ```bash
 bash boot-local.sh
 ```
 
-### (4. Access Opol)
+### 3. Access & Use Opol
 Once the stack is running:
-- Visit the dashboard at `http://localhost:8089`
+- Dashboard `http://localhost:8089/dashboard`
 - Use it as a local Opol instance in your Python code:
   ```python
   from opol import OPOL
