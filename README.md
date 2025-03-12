@@ -1,17 +1,10 @@
 ![opol](.github/media/opol.png)
 
-**Opol** is the beating heart of [*The Open Politics Project*](https://github.com/open-politics/open-politics) — a high-tech stack of efficiently operationalised and modular data methods. Integrated into a suite full of useful tools for data driven political analysis.
+**Opol** is the beating heart of [*The Open Politics Project*](https://github.com/open-politics/open-politics) — a high-tech stack of efficiently operationalized and modular data methods integrated into a suite of tools for data-driven political analysis.
 
+Our mission is to illuminate the dense web of politics, geopolitics, economics, and legislation through the systematic collection and analysis of open source intelligence. By building a foundation of modular, interconnected data operations, we're not just processing information — we're aiming to help architect the technological infrastructure of a more transparent, comprehensible, and genuinely more democratic future.
 
-Our mission is to illuminate the dense web of politics, geopolitics, economics, and legislation through the systematic collection and analysis of open source intelligence. By building a foundation of modular, interconnected data operations, we're not just processing information — we're architecting the technological infrastructure for a more transparent, comprehensible, and genuinely democratic future.
-
-We hope you can find some use in the tools we offer or are intruiged enough to look more closely at the code and maybe even contribute to it.
-
----
-The Open Politics Project (and thus Opol) are built to enable. To see and measure more of what's happening right now in this maddening clusterfuck that politics is. Fully Open Source and as an asset to everyone. That is our commitment.
-
-
-All of our methods and principles will be laid out in more detail on our [homepage](https://open-politics.org) and upcoming academic work. Especially all the patterns around classification schemes and reranking will need a comprehensive public discussion. Until we have set up such conversation framework please create a github issue or contact us via mail at engage@open-politics.org for any questions on this. 
+All of our methods and principles are laid out in more detail on our [homepage](https://open-politics.org) and upcoming academic work. Especially all the patterns around classification schemes and reranking will need a comprehensive public discussion. Until we have set up such conversation framework please create a GitHub issue or contact us via mail at engage@open-politics.org for any questions.
 
 ## Table of Contents
 - [Introduction](#introduction)
@@ -27,41 +20,44 @@ All of our methods and principles will be laid out in more detail on our [homepa
 - [Example Usage](#example-usage)
 - [Further Documentation](#further-documentation)
 - [Contributing](#contributing)
-- [License](#license)
-
-
-## Introduction
-### What is O(P)SINT?
-Open Source Political Intelligence (O(P)SINT) is a specialized form of OSINT, tailored for political analysis. It integrates:
-
-- **Data engineering** for large-scale data processing and management
-- **Political science** for structuring, analyzing, and interpreting politically relevant data
-- **Open-source principles** ensuring community-driven improvements, transparency, and extensibility
-
-### Why Opol?
-- **Better Data Access**: A robust platform that centralizes data from multiple sources (news, economic statistics, polls, legislation).
-- **Scalable & Modular**: Microservice architecture, container-based deployment, and a flexible and highly ressource efficient pipeline orchestrated via Prefect.
-- **Extendable**: Easily add your own sources, classification schemes, or transformations.
-- **Transparency & Community**: This is a public intelligence operation—community contributions and reviews are welcomed.
+- [License](#license).
 
 ## Features
-Opol offers a comprehensive suite of tools and functionalities designed to streamline the entire data lifecycle for political intelligence:
-- **Data Ingestion & Scraping**: Automate the collection of diverse data sources, including news, economic metrics, polls, and legislation across multiple regions.
-- **Advanced Search & Semantic Capabilities**: Utilize a vectorized search interface powered by SearXng meta-search, supporting queries across platforms like Google, DuckDuckGo, Wikipedia, Arxiv, and YouTube.
-- **Natural Language Processing**:
-  - **LLM Classifications**: Leverage large language models to categorize documents with event types, topics, and relevance scores.
-  - **Embeddings**: Generate vector embeddings for semantic search and advanced NLP tasks.
-- **Reranking**: Enhance search result relevance through semantic similarity-based reranking.
-- **Entity Recognition & Geocoding**: Identify key entities (people, locations, organizations) and convert geographical references into latitude-longitude coordinates for geospatial analysis.
-- **Data Storage & Management**:
-  - **Vector Database**: Implement pgvector for efficient text similarity queries.
-  - **SQL Database**: Manage article metadata, including topics, entities, classification scores, and events.
-- **Orchestration & Workflow Management**: Employ Prefect for scalable, isolated batch processing and live data operations, ensuring efficient handling of complex data pipelines.
-- **Live Services & API Integration**: FastAPI-powered microservices offer real-time data access, embeddings generation, and contextual retrieval.
-  - **Geospatial Utilities**: Tools for generating GeoJSON and integrating with SearXng for enhanced data enrichment.
-- **Extensibility & Customization**: Easily add new data sources, classification schemes, or transformations to adapt to evolving analytical needs (e.g. new LLM models).
+Opol servers as the toolkit to streamline the full data lifecycle of the most common data operations needed for open source political intelligence operation.
 
-Many of these features are available as core processing element (like chunking & embedding all scraped content) and live inference (like embedding generation for queries or reranking). 
+- **Data Ingestion & Scraping**: Automate the collection of diverse data sources, including news, economic metrics, polls, and legislation across multiple regions.
+
+- **Search Capabilities**: 
+  - **Semantic Search**: Vector-based similarity search using document embeddings stored in pgvector
+  - **Structured Retrieval**: via SQL like over Entities, Locations, Core Classifications
+  - **Meta-Search Integration**: Access to multiple search engines (Google, DuckDuckGo, Wikipedia, etc.) through SearXng
+
+- **Natural Language Processing**:
+  - **LLM Classifications**: Leverage large language models to categorize, annotate and classify documents with various types like topics, quotes and relevance scores
+  - **Embeddings**: Generate vector embeddings for semantic search and advanced NLP tasks
+  - **Reranking**: Enhance search result relevance through semantic similarity scoring
+
+- **Entity Recognition & Geocoding**: 
+  - Identify key entities (people, locations, organizations)
+  - Convert geographical references into latitude-longitude coordinates for geospatial analysis
+
+- **Data Storage & Management**:
+  - **Vector Database**: pgvector implementation for efficient text similarity queries
+  - **SQL Database**: Manage article metadata, including topics, entities, classification scores, and events
+
+- **Orchestration & Workflow Management**: 
+  - Prefect for scalable, isolated batch processing
+  - Efficient handling of complex data pipelines with monitoring and retry capabilities
+
+- **Live Services & API Integration**: 
+  - FastAPI-powered microservices for real-time data access
+  - Geospatial utilities for generating GeoJSON 
+  - Local LLMs via Ollama
+
+- **Extensibility & Customization**: Easily add new data sources, classification schemes, or transformation methods
+(This is a lie, it's super hardcoded)
+
+> We are aiming to build in OWLER from the OWS project. It should help facilitate easier configuration of large-scale scrape jobs
 
 ## Data Coverage
 Because global coverage is huge, we focus on building reliable, modular methods that can be extended to new geographies and data sets. Current efforts are aimed at:
@@ -77,12 +73,6 @@ We encourage public contributions to add new sources, modules, or classification
 
 ## Data Privacy & Security
 This is a short note since in no part of our architecture we have embedded tracking or analytics of any sorts (which we invite you to proof-read in our codebase).
-
-The webapp stores a local cookie for the user's session (json web token).
-Additionally, the webapp [open-politics.org](https://open-politics.org) will **maybe** at some point use anonymized telemetry (according to open source best practices) to collect usage data on ui features and interactions for development. Maybe.
-
-To sum up: We do not track any user data - and have no pixels or analytics.
-
 
 
 ## This Repository
@@ -180,7 +170,7 @@ for poll in polls:
 [**Notebook Examples:**](opol/python-client/prototype.ipynb) Jupyter Notebook Prototype demonstrating typical usage scenarios.
 
 ## Contributing
-We’re building Opol as a community-driven project. Whether you’re a developer, data scientist, political researcher, or simply interested in public intelligence operations, you’re welcome to contribute. Please open an Issue or Pull Request with your ideas and improvements.
+We're building Opol as a community-driven project. Whether you're a developer, data scientist, political researcher, or simply interested in public intelligence operations, you're welcome to contribute. Please open an Issue or Pull Request with your ideas and improvements.
 
 How you can help:
 
@@ -190,5 +180,5 @@ How you can help:
 - Contribute to documentation, scripts, or code
 
 ## License
-Opol is released under the MIT License. You’re free to use, modify, and distribute this software in any personal, academic, or commercial project, provided you include the license and its copyright notice.
+Opol is released under the MIT License. You're free to use, modify, and distribute this software in any personal, academic, or commercial project, provided you include the license and its copyright notice.
 
