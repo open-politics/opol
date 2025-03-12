@@ -62,7 +62,7 @@ logger = logging.getLogger("uvicorn.access")
 logger.setLevel(logging.WARNING)
 
 # Global variable to store the current pool type
-current_pool_type = "k8s"
+current_pool_type = "docker"
 
 class PipelineManager:
     def __init__(self, config: ServiceConfig, redis_conn: Redis):
@@ -317,7 +317,7 @@ async def flush_redis_channels(
 @app.post("/toggle_pool")
 async def toggle_pool(manager: PipelineManager = Depends(get_pipeline_manager)):
     global current_pool_type
-    current_pool_type = "k8s" if current_pool_type == "docker" else "docker"
+    current_pool_type = "docker" if current_pool_type == "k8s" else "k8s"
     result = {
         "message": f"Pool type switched to {current_pool_type}",
         "current_pool_type": current_pool_type,
