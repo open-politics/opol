@@ -12,7 +12,7 @@ jobs:
     name: Build Package
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - uses: actions/setup-python@v4
       with:
@@ -27,7 +27,7 @@ jobs:
         python -m build
 
     - name: Upload dist artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: dist
         path: opol/python-client/dist
@@ -40,10 +40,10 @@ jobs:
     permissions:
       id-token: write  # Mandatory for Trusted Publishing
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Download dist artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: dist
         path: opol/python-client/dist
