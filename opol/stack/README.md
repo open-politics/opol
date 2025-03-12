@@ -4,7 +4,7 @@
 
 This guide provides an overview of the services, tasks, and flows used to orchestrate this data operation. Whether you're a developer looking to contribute or an enthusiast eager to understand the system, this documentation aims to help you navigate and comprehend the architecture effectively.
 
-If something is unclear, missing documentation, or unnecessarily hard to get into, please let us know via a GitHub Issue.
+If something is unclear, missing documentation, or unnecessarily hard to get into, please let us know via a GitHub Issue! <3
 
 --- 
 | Note |  |
@@ -24,9 +24,7 @@ If something is unclear, missing documentation, or unnecessarily hard to get int
 
 ## Overview
 
-The `opol/opol/stack` directory is at the heart of the application, responsible for orchestrating various microservices and workflows essential for the system's functionality. It is ready to use with Docker Compose on your local machine.
-
-In its advanced form, it can be deployed as a Kubernetes cluster using Helm. For more information, see [deployment documentation](../../.deployment).
+This `opol/opol/stack` directory is at the heart of the application, responsible for orchestrating various microservices and workflows essential for the system's functionality. It is ready to use with Docker Compose on your local machine.
 
 ![Stack with Flows Architecture](../../.github/media/stackwithflowarchitecture.png)
 
@@ -43,8 +41,8 @@ cd opol/opol/stack
 docker compose -f compose.local.yml up -d
 ```
 
-### 3. Run the boot script
-Installs prefect via pip, sets the client url to the local prefect server, deploys the data pipelines.
+### 3. Run the boot script (in another shell)
+Installs prefect via pip, sets the client url to the local prefect server, deploys the data pipelines and triggers a few them directly.
 ```bash
 bash boot-local.sh
 ```
