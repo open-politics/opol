@@ -4,9 +4,12 @@ from .service_mapping import config, get_db_url
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import text
 import logfire
+import os
+from typing import AsyncGenerator, Any
 
-logfire.configure()
-logfire.instrument_asyncpg()
+if os.environ.get('LOGFIRE_TOKEN') != '':
+    logfire.configure()
+    logfire.instrument_asyncpg()
 
 DATABASE_URL = get_db_url()
 
@@ -21,7 +24,7 @@ async def create_db_and_tables():
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(SQLModel.metadata.create_all)
 
-async def get_session() -> AsyncSession:
+async def get_session() -> AsyncGenerator[AsyncSession, Any]:
     async with async_session() as session:
         yield session
 

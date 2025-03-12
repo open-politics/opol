@@ -1,5 +1,9 @@
 services:
 
+  ###########################################################################
+  # APP/ DASHBOARD
+  ###########################################################################
+
   app-opol-core:
     build: 
       context: .
@@ -20,6 +24,10 @@ services:
     networks:
       - opol-app-stack
       - default
+  
+  ###########################################################################
+  # DATABASES
+  ###########################################################################
 
   database-articles:
     image: pgvector/pgvector:pg16
@@ -38,6 +46,11 @@ services:
     networks:
       - opol-app-stack
       - default
+  
+  ###########################################################################
+  # ENGINES 
+  ## Taxonomic mix, sometimes databases, sometimes full apps.
+  ###########################################################################
 
   engine-pelias-placeholder:
     image: pelias/placeholder
@@ -92,6 +105,10 @@ services:
       - ./core/configs/searxng/searxng-limiter.toml:/etc/searxng/limiter.toml
       - ./core/configs/searxng/searxng-settings.yml:/etc/searxng/settings.yml
       - ./.store/data/searxng:/data
+
+  ###########################################################################
+  # SERVICES
+  ###########################################################################
 
   service-embeddings:
     build: 
@@ -174,6 +191,10 @@ services:
       - opol-app-stack
       - default
 
+  ###########################################################################
+  # WORKERS
+  ###########################################################################
+
   worker-prefect:
     image: prefecthq/prefect:3-python3.11
     build:
@@ -190,6 +211,36 @@ services:
     networks:
       - default
       - opol-app-stack
+
+  ###########################################################################
+  # FLOW RUN IMAGES 
+  ###########################################################################
+  ### If you want to package dependencies independently. 
+  # Otherwise our flow runner image will most likely will have all the dependencies.
+
+  flow-runner:
+    build:
+      context: .
+      dockerfile: ./flows/Dockerfile
+    image: flow-runner:latest
+    command: "echo 'Runner flow image built successfully'"
+    networks:
+      - opol-app-stack
+      - default
+    env_file:
+      - .env.local
+    
+  flow-entities:
+    build:
+      context: .
+      dockerfile: ./flows/Dockerfile
+    image: flow-entities:latest
+    command: "echo 'Entities flow image built successfully'"
+
+
+  ###########################################################################
+  # ARCHIVED
+  ###########################################################################
 
   # engine-ray-head:
   #   build: 
@@ -239,19 +290,6 @@ services:
   #     - opol-app-stack
   #     - default
 
-  # litellm:
-  #   build: 
-  #     context: .
-  #     dockerfile: ./litellm/Dockerfile
-  #   volumes:
-  #     - ./opol/stack/litellm/config.yaml:/app/config.yaml
-  #   ports:
-  #     - "4000:4000"
-  #   command: >
-  #     --config '/app/config.yaml' --debug --host 0.0.0.0 --port 4000 --num_workers 8
-  #   networks:
-  #     - default
-
   # ollama:
   #   build: 
   #     context: .
@@ -271,15 +309,7 @@ services:
   #   networks:
   #     - default
 
-  # cloud-sql-proxy:
-  #   image: gcr.io/cloud-sql-connectors/cloud-sql-proxy
-  #   command:
-  #     - "--credentials-file=/credentials/service-postgres-key.json"
-  #     - "${CLOUD_SQL_CONNECTION_NAME}"
-  #   volumes:
-  #     - ./credentials/service-postgres-key.json:/credentials/service-postgres-key.json:ro
-  #     - cloudsql:/cloudsql
-
+  
   # prefect_database:
   #   image: postgres:15
   #   restart: always
@@ -304,7 +334,6 @@ volumes:
   articles_db_data:
   cloudsql:
   # prefect_db_data:
-  # grafana_data:
   prefect_data:
   r2r_db_data:
 

@@ -3,10 +3,12 @@ from fastapi import FastAPI
 from core.adb import create_db_and_tables, get_session
 from core.middleware import add_cors_middleware
 from routes.main import api_router
+import os
 
-import logfire
-
-logfire.configure()
+if os.environ.get('LOGFIRE_TOKEN') != '':
+    import logfire
+    logfire.configure()
+    logfire.install_auto_tracing(modules=['app'], min_duration=0.01)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

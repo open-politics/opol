@@ -23,9 +23,8 @@ COPY services/service-postgres .
 
 # Copy the core directory
 COPY ../../core/ ./core
-COPY ../../library/ ./library
 
 
-RUN chmod +x start-reload.sh start.sh
+RUN chmod +x start-reload.sh
 
 CMD ["./start-reload.sh"]

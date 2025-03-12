@@ -298,7 +298,6 @@ async def create_entity_extraction_jobs(session: AsyncSession = Depends(get_sess
 async def store_contents_with_entities(
     session: AsyncSession = Depends(get_session)
 ):
-    logger.info("Starting store_contents_with_entities function (no embeddings).")
     redis_conn = await Redis.from_url(get_redis_url(), db=2, decode_responses=True)
     contents_json_array = await redis_conn.lrange('contents_with_entities_queue', 0, -1)
     logger.info(f"Retrieved {len(contents_json_array)} contents from Redis queue")

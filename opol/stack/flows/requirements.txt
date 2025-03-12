@@ -25,3 +25,4 @@ matplotlib
 optuna
 umap-learn
 hdbscan
+newspaper4k

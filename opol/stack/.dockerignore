@@ -11,3 +11,7 @@ mains.txt
 
 __pycache__/
 
+.env
+data/**
+.store/**
+**/prefect_data/**

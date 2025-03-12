@@ -16,4 +16,10 @@ COPY ./flows/requirements.txt .
 
 RUN uv pip install -r requirements.txt
 
-COPY ./flows .
+COPY ./flows ./flows
+
+COPY ./services/service-scraper/tasks /app/tasks/
+
+COPY ./services/service-scraper/news_sites /app/news_sites/
+
+

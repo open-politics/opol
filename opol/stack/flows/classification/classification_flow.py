@@ -1,26 +1,37 @@
 import asyncio
-from typing import List
+import json
+import os
 from typing import List, Optional, Literal
+
 from pydantic import BaseModel, Field, field_validator
 from redis.asyncio import Redis
 from prefect import flow, task
+from prefect.task_runners import ThreadPoolTaskRunner
+
 from core.utils import UUIDEncoder, logger
 from core.models import Content
-from core.service_mapping import get_redis_url
+from core.service_mapping import get_redis_url, ServiceConfig
 from opol import OPOL
-from core.service_mapping import ServiceConfig
-from prefect.task_runners import ThreadPoolTaskRunner
-import json
-import os
 
 # Initialize config
 config = ServiceConfig()
 
-# Initialize Opol
-opol = OPOL(api_key=os.environ["OPOL_API_KEY"])
+opol = OPOL(mode=os.environ.get("OPOL_MODE", "container"), api_key=os.environ.get("OPOL_API_KEY", ""))
 
 # Initialize Classification Service
-xclass = opol.classification(provider="Google", model_name="models/gemini-1.5-flash-latest", llm_api_key=os.environ["GOOGLE_API_KEY"])
+if os.environ["LOCAL_LLM"] == "True":
+    xclass = opol.classification(
+        provider="ollama", 
+        model_name=os.environ.get("LOCAL_LLM_MODEL", "llama3.2:latest"), 
+        llm_api_key=""
+    )
+else:
+    xclass = opol.classification(
+        provider=os.environ.get("LLM_PROVIDER", "Google"), 
+        model_name=os.environ.get("LLM_MODEL", "models/gemini-2.0-flash-latest"), 
+        llm_api_key=os.environ.get("GOOGLE_API_KEY", "")
+    )
+
 
 @task(log_prints=True)
 async def retrieve_contents_from_redis(batch_size: int) -> List[Content]:
@@ -50,12 +61,15 @@ class ContentRelevance(BaseModel):
     """
     content_type: Literal["Content", "Other"]
 
+
 @task(log_prints=True)
 async def classify_content(content: Content) -> dict:
     """Classify the content for relevance asynchronously."""
     try:
         content_text = f"Content Title: {content.title}\n\nContent: {content.text_content[:320]}"
+
         sys_prompt = "Classify the content for relevance. If the headline consists solely of a single keyword such as 'Technology,' 'Asia,' '404 - Page not found,' or 'Data Privacy,' it is likely deemed unwanted and should be classified as 'Other'."
+
         classification_result = xclass.classify(ContentRelevance, sys_prompt, content_text)
         logger.debug(f"Model response: {classification_result}")
         return classification_result.model_dump()
@@ -63,6 +77,7 @@ async def classify_content(content: Content) -> dict:
         logger.error(f"Error classifying content ID {content.id}: {e}")
         return {}
     
+
 # Second, more comprehensive classiication
 class ContentEvaluation(BaseModel):
     """
@@ -134,6 +149,7 @@ class ContentEvaluation(BaseModel):
 
         return v
 
+
 @task(log_prints=True)
 async def evaluate_content(content: Content) -> ContentEvaluation:
     """Evaluate the content if it is relevant asynchronously."""
@@ -149,6 +165,7 @@ async def evaluate_content(content: Content) -> ContentEvaluation:
         logger.error(f"Error evaluating content ID {content.id}: {e}")
         return ContentEvaluation()
 
+
 @task(log_prints=True)
 async def write_contents_to_redis(serialized_contents):
     """Write serialized contents to Redis asynchronously."""
@@ -162,6 +179,7 @@ async def write_contents_to_redis(serialized_contents):
     redis_conn_processed = await Redis.from_url(get_redis_url(), db=4)
     await redis_conn_processed.lpush('contents_with_classification_queue', *serialized_contents)
     logger.info(f"Wrote {len(serialized_contents)} contents with classification to Redis")
+
 
 @flow(task_runner=ThreadPoolTaskRunner(max_workers=50))
 async def classify_contents_flow(batch_size: int):
@@ -208,6 +226,7 @@ async def classify_contents_flow(batch_size: int):
         await write_contents_to_redis(evaluated_contents)
     return evaluated_contents
 
+
 @task(log_prints=True)
 async def process_content(content):
     """
@@ -241,5 +260,6 @@ async def process_content(content):
         logger.error(f"Error: {e}")
         return None
 
+
 if __name__ == "__main__":
-    asyncio.run(classify_contents_flow(batch_size=40))    
+    asyncio.run(classify_contents_flow(batch_size=40))

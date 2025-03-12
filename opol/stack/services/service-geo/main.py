@@ -111,6 +111,7 @@ class GeoManager:
                 Content.insertion_date >= (datetime.now(timezone.utc) - timedelta(weeks=12)).isoformat()
             ).order_by(Content.insertion_date.desc()).limit(limit)
 
+
         result = await self.session.execute(location_query)
         locations = result.scalars().unique().all()
         self.logger.info(f"Retrieved {len(locations)} locations from the DB, filter_event_type={filter_event_type}")

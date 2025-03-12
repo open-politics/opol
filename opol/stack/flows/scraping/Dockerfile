@@ -27,4 +27,8 @@ COPY ../../core/ ./core
 COPY services/service-scraper/ .
 
 # Copy the scraping script
-COPY flows/scraping/ .
+COPY flows/scraping/ flows/scraping/
+
+COPY services/service-scraper/tasks /app/tasks/
+
+COPY services/service-scraper/news_sites /app/news_sites/

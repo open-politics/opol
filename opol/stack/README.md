@@ -2,8 +2,9 @@
 
 ### Welcome to the Opol Stack documentation!
 
-#### This guide provides an overview of the services, tasks, and flows used to orchestrate this data operation. Whether you're a developer looking to contribute or an enthusiast eager to understand the system, this documentation aims to help you navigate and comprehend the architecture effectively.
-#### If something is unclear, missing documentation, or unnecessarily hard to get into, please let us know via a GitHub Issue.
+This guide provides an overview of the services, tasks, and flows used to orchestrate this data operation. Whether you're a developer looking to contribute or an enthusiast eager to understand the system, this documentation aims to help you navigate and comprehend the architecture effectively.
+
+If something is unclear, missing documentation, or unnecessarily hard to get into, please let us know via a GitHub Issue.
 
 --- 
 | Note |  |
@@ -11,47 +12,25 @@
 | This documentation concentrates on the **stack**. If you want to learn more about the python client used to interact with the stack please visit [this page](../python-client/README.md) |
 
 ## Table of Contents
-- Overview
-- Directory Structure
-- Environment Configuration
-- Service Orchestration
-  - Docker Compose Files
-  - Services
-  - Flows
-- Flow Orchestration
-  - List of Flows & Pipelines
-- Service Configuration
-- Observability
-- Setup and Deployment
-- Contribution Guidelines
-- Resources
+- [Overview](#overview)
+- [Quick Start](#quick-start)
+- [Directory Structure](#directory-structure)
+- [Architecture](#architecture)
+  - [Services](#services)
+  - [Flows](#flows)
+- [Detailed Setup](#detailed-setup)
+- [Development Notes](#development-notes)
+- [Resources](#resources)
 
 ## Overview
-#### This `opol/opol/stack` directory is at the heart of the application, responsible for orchestrating various microservices and workflows essential for the system's functionality. It is as-is ready to use with docker compose on your local machine.
-(*In it's advanced form it is deployed as a kubnetes cluster deployed with helm. For more information look into [here](../../.deployment)*)
 
+The `opol/opol/stack` directory is at the heart of the application, responsible for orchestrating various microservices and workflows essential for the system's functionality. It is ready to use with Docker Compose on your local machine.
 
-## Directory Structure
-
-| File/Directory          | Description                                                                 |
-|-------------------------|-----------------------------------------------------------------------------|
-| **README.md**           | You are here                                                                |
-| **.store**             | Store for scraped data, geocoding data, and redis queue storage              |
-| **compose.local.yml**   | Compose File using a local Prefect server                                    |
-| **compose.yml**         | Development Compose File                                                    |
-| **core**                | Service package, holding pydantic models, URL mappings, database connections |
-| **flows**               | Batch processing flows: scraping, geocoding, entities, classification, embeddings |
-| **services**            | Services, mostly used for live requests: scraping, geocoding, embeddings .. + a dashboard |
-| **prefect.yaml**        | Prefect Flow File for local docker work pool                                |
-| **prefect-k8s.yaml**   | Prefect Flow File for Kubernetes work pool                                       |
-| **register-k8sflows.sh** | Script to register flows to Kubernetes work pool |
-| **register-flows.sh**     | Script to register flows to local docker work pool | 
-
+In its advanced form, it can be deployed as a Kubernetes cluster using Helm. For more information, see [deployment documentation](../../.deployment).
 
 ![Stack with Flows Architecture](../../.github/media/stackwithflowarchitecture.png)
 
-
-## Installation & Setup
+## Quick Start
 
 ### 1. Clone the repository
 ```bash
@@ -59,214 +38,157 @@ git clone https://github.com/open-politics/opol.git
 cd opol/opol/stack
 ```
 
-### 2. Setup Environment
-
-The `.env.example` file serves as a template, outlining the required variables without exposing sensitive information. Ensure you populate the `.env` file with the necessary configurations before deploying the stack. \
-Run:
+### 2. Boot up the containers
 ```bash
-mv .env.example .env
-```
-#### Once this is done you have two options to boot up the stack:
-
-##### 2.1 Full Stack (services + flows)
-This is the stack we use. Apart from the env variables below you need to set up a Prefect account and add the API Key to the env file.
-Furthermore you need to set up Google Generative AI (as long as Google is the only provider set up )
-You need to set at least these env variables:
-1. Prefect Account ID, Workspace ID and API Key (on non-local stack) 
-   - This connects flow code, dependencies and infra (docker in this case)
-2. Google Generative Studio API Key.
-   - This is used for the classification service.
-
-##### 2.2 Light Variant
-No need to set any env variables. You can just use the services without flows. But there won't be any scraping happening.
-So you can only use:
-- SearXNG Engine Search (results = opol.search.engine(query)
-- Embeddings (embeddings = opol.embeddings.get(text))
-- Geocoding (geocode = opol.geo.code(address))
-
-🚧 The full local stack setup needs some refactoring and testing:
-The full local setup is still in works. Ollama is already set up to serve as a classifier instead of Google's LLMs.
-Together with the local version this should be ready to work fully local.
-
-
-### 3. Start the stack
-Run:
-```bash
-docker compose up --build
+docker compose -f compose.local.yml up -d
 ```
 
-### ✅ Done! Opol is ready to work
-Now you can:   
+### 3. Run the boot script
+Installs prefect via pip, sets the client url to the local prefect server, deploys the data pipelines.
+```bash
+bash boot-local.sh
+```
+
+### (4. Access Opol)
+Once the stack is running:
 - Visit the dashboard at `http://localhost:8089`
-- Use it as local opol instance by setting the mode to local:
-   ```python
-   from opol import OPOL
+- Use it as a local Opol instance in your Python code:
+  ```python
+  from opol import OPOL
+  
+  opol = OPOL(mode="local") # reach the services under their localhost adresses mapped in .env/ .env.local
+  ```
 
-   opol = OPOL(mode="local) # no api key needed
-   ```
+*Note: Initial data population takes time. For every 10 sources specified, expect about 20 minutes to load everything into the system (on a 32GB RAM machine).*
 
-*Just give it some time to populate the data. For every 10 sources specified it should take about 20 Minutes to load everything into system (on a 32GB Ram Machine).*
+## Directory Structure
 
+| File/Directory          | Description                                                                 |
+|-------------------------|-----------------------------------------------------------------------------|
+| **README.md**           | This documentation                                                          |
+| **.env.local**          | Local environment configuration                                             |
+| **.store**              | Store for scraped data, geocoding data, and Redis queue storage             |
+| **boot-local.sh**       | Script to quickly start the local stack                                     |
+| **compose.local.yml**   | Compose file using a local Prefect server                                   |
+| **compose.yml**         | Development Compose file                                                    |
+| **core**                | Service package with shared models, URL mappings, database connections      |
+| **flows**               | Batch processing flows: scraping, geocoding, entities, classification, etc. |
+| **services**            | Services for live requests: scraping, geocoding, embeddings, dashboard      |
+| **prefect.yaml**        | Prefect flow file for local Docker work pool                                |
+| **prefect-k8s.yaml**    | Prefect flow file for Kubernetes work pool                                  |
+| **register-flows.sh**   | Script to register flows to local Docker work pool                          |
+| **register-k8sflows.sh**| Script to register flows to Kubernetes work pool                            |
 
+## Architecture
 
+Opol uses a dual architecture pattern to efficiently handle both batch processing and live usage:
 
-## Service & Flow Orchestration
+### Services vs Flow & Task Orchestration
 
-## General Note
-All date operations need two things, distinct in their needs for operationalising them most efficient:
-- Batch Processing
-- Live Usage
+![Prefect Dashboard](../../.github/media/prefect_dashboard.png)
+![Prefect Flow Run Tracing](../../.github/media/prefect_flows.png)
 
-And thus Opol has two interconnected patterns that allow a sytem, bootable from a local machine, to scale high and stay ressource-efficient.
+All data operations need two things with distinct operational requirements:
+- **Batch Processing**: For regular data ingestion and enrichment
+- **Live Usage**: For real-time API requests
 
-##### Live Usage
-Live Usage is rather easy. Boot up the Docker images with FastAPI servers, build endpoints, request, done.
-Here we will not go into more detail. But to sum up: one part of our stack is the live services.
-
-#### Batch Processing
-Batch procesing is more difficult. Each of the fundmental data operations of an OSINT project is distinct in their dependencies and environment setups. While scraping needs a playwright implementation, embeddings needs the transformer package. And we furthermore might not want to have these dependencies always loaded, they clog our system. They can be incompatible. Well...
-
-*But thats whats docker was invented for right?*
-
-Yes, **but** we want to worry the least we can about booting up the jobs and running these regular data operations. Most regular data operations are loads that can be put into batches, resembling a structure of ETL (Extract, Transform, Load). This is where Prefect comes in.
-
-Prefect is our workflow orchestration tool of choice. It allows us to define, schedule and monitor our data pipelines in a clean and efficient way. With Prefect, we can:
-- Isolate different data operations in separate containers
-- Schedule regular data ingestion and enrichment jobs
-- Monitor the health and performance of our flows
-- Handle retries and failures gracefully
-- Scale our batch processing horizontally (also with Rayclusters)
-
-*Why is this cool?* \
-Because Prefect can handle the automatic booting, flow execution and subsequent cleanup for all our tasks and flows orchestrated that way.
-
-These flows are the backbone of our data pipeline, continuously populating our database with fresh data from various sources and enriching it with embeddings, classifications, and entity information + x coming more operations. The combination of Docker isolation and Prefect orchestration gives us a robust and maintainable system for handling complex OSINT data operations at scale.
-
-*This is also why when you boot up the light version of the stack (and thus no flows are run, no data scraped, engineered and ingested) some core functionalities (like Geojson & scraped entities data) are not availble.*
+This dual approach allows Opol to scale efficiently while remaining resource-conscious.
 
 ### Services
-The opol-services (services, engines & databases) form the backbone of the application, handling functionalities like data scraping, engineering, batch processing and various utitlies centered around opol.
 
-Notes:
-- All these services and packages build services with shared modules from `core`. 
-   - Here you can find the shared pydantic models, service-url-mappings, database connections and more.
-- The scraped data/ database files are stored in stack/.store
+Services handle live requests through FastAPI servers. They include:
 
-Databases & Queues:
+**Databases & Queues:**
 - PostgreSQL Database (`database-articles`)
-- Redis Server (`redis`)
-- Prefect Server (`prefect_server`)
+- Redis Server (`engine-redis`)
+- Prefect Server (`engine-prefect-server`)
 
-Services:
-- Opol Dashboard/ Core App (`app`)
-- Scraping Service (`scraping_service`)
-- Geocoding Service (`geocoding_service`)
-- Embeddings Service (`embedding_service`)
-- Entities Service (`entities_service`)
-- Classification Service (`classification_service`) (deprecated in favor of direclty implementing classification capabilities in the opol package with instructor)
+**Core Services:**
+- Opol Dashboard/Core App (`app-opol-core`)
+- Scraping Service (`service-scraper`)
+- Geocoding Service (`service-geo`)
+- Embeddings Service (`service-embeddings`)
+- Entities Service (`service-entities`)
 
-Utilities:
-- Ollama Server (`ollama`) # For local LLMs
-- Pelias Placeholder (`pelias_placeholder`) # For local geocoding
-- SearXng # Self hostable search engine for many popular providers (Arxiv, DuckDuckGo)
+**Utilities:**
+- Ollama Server (`engine-ollama`) - For local LLMs
+- Pelias Placeholder (`engine-pelias-placeholder`) - For local geocoding
+- SearXNG (`engine-searxng`) - Self-hostable search engine
 
 ### Flows
-If you boot up the stack, the prefect worker will start up and create a workpool "docker-pool". \
-Register the flows with the deploy-flows.sh:
-```bash
-bash deploy-flows.sh
-```
-This registers/ deploys the flows. Once they are registered the worker in the docker stack will look for jobs in that pool, like a pub/sub topic. When the worker recieves a new job, it will start a container with the image specified in the flow and execute the flow according the the entrypoint.
-Except for the entities flow most flows share a lot of dependencies. That is why the base-worker image is used for most of the flows.
 
-You can use your docker images or start building your own and adding your flow code definitions in the flows folder.
-Invoke them in the prefect.yaml. 
-Make sure that how the file is mounted in the docker container e.g. "flows/classification/classification_flow.py" is identical to from where locally the prefect.yaml is executed/ deployed from (run bash deploy-flows.sh from opol/stack).
+Flows handle batch processing using Prefect for workflow orchestration. This approach:
+- Isolates different data operations in separate containers
+- Schedules regular data ingestion and enrichment jobs
+- Monitors health and performance
+- Handles retries and failures gracefully
+- Scales batch processing horizontally
 
-#### Note on development
-If you want to develop on flows you have to do a few things:
-1. Set up your own prefect cloud account or spin up a local server
-2. Build and push the images you need to use for the flows.
-3. Start a work pool in prefect cloud or locally.
-4. Register the flows with the register-flows.sh script. (Make sure that the first part of the entrypoint path exist relative from the prefect.yaml file - this means you flow code needs to be in this repo under flows/ somewhere.)
-
-
-### Core Flows
-#### Main Ingestion Flow
+#### Core Flow Sequence
 
 The primary ingestion flow follows this sequence:
 
-0. **Orchestration Flow**
-
-1. **Scraping** 
-2. **Embeddings** 
-3. **Entities** 
-4. **Geocoding** 
-5. **Classification** 
-
-Each of these sequences is a single flow. 
+1. **Orchestration Flow** - Coordinates the entire pipeline
+2. **Scraping** - Collects data from sources
+3. **Embeddings** - Generates vector embeddings
+4. **Entities** - Extracts named entities
+5. **Geocoding** - Adds geographic information
+6. **Classification** - Categorizes content
 
 #### Flow Mechanics
 
-There are two mechanics:
-1. The **Orchestration Flow** triggers these endpoints regularly:
-- **Postgres Service:**
-  1. **Create Jobs:** Push jobs to `unprocessed_**pipeline_name**` Redis queue.
-  2. **Save Results:** Retrieve results from `processed_**pipeline_name**` Redis queue.
+The system uses two main mechanics:
+1. **Orchestration Flow** triggers endpoints to:
+   - Create jobs and push to Redis queues
+   - Save results from processed queues
 
-2. The **Processing Flows** are run on schedules, but can also manually be triggered with prefect commands:
+2. **Processing Flows** run on schedules or manual triggers to:
+   - Check Redis for pending jobs
+   - Process jobs and update queues
 
+## Detailed Setup
 
-#### Flow Execution
+### Environment Configuration
 
-- Each flow is initiated within containers, launching a long-running Prefect `serve` deployment.
-- Upon triggering (via HTTP API or Prefect command), the flow checks Redis for pending jobs and processes them accordingly.
+The `.env.local` file contains all necessary configuration and is pre-configured for local use. No additional configuration is required for basic functionality.
 
-#### Orchestration Flow
+### Setup Options
 
-The orchestration flow is crucial for:
+#### Full Stack (services + flows)
+The complete stack with all features is automatically set up by the `boot-local.sh` script. No additional configuration is needed.
 
+#### Light Variant
+If you only need core services without flows, you can use:
+```bash
+docker compose -f compose.local.yml up -d
+```
 
-**Example Orchestration Sequence:**
+This provides:
+- SearXNG Engine Search
+- Embeddings
+- Geocoding
 
-1. **Trigger:** Orchestration Flow initiates.
-2. **Job Creation:** Postgres Service creates embedding jobs for content lacking embeddings.
-3. **Queue Management:** 
-   - Redis Queue receives content without embeddings.
-   - Embedding Flow processes and updates the queue with content containing embeddings.
-4. **Result Saving:** Postgres Service saves the processed embeddings.
+## Development Notes
 
+### Working with Flows
 
+To develop flows:
+1. Set up a Prefect account or local server
+2. Build and push required images
+3. Start a Prefect work pool
+4. Register flows with the `register-flows.sh` script
 
-This orchestration flow acts as an overcomplicated cron job, But it allows the flexibility to dynamically add more comprehensive orchestration mechanisms through HTTP requests.
+Make sure the entrypoint paths in `prefect.yaml` match your local repository structure.
 
+### Flow Execution
 
-## Flow Orchestration
-Flows are defined using Prefect, enabling asynchronous and structured workflow management.
+- Flows run in containers using Prefect's `serve` deployment
+- The worker polls for jobs in the work pool
+- When a job is received, the worker starts a container with the specified image
 
-Read more in the flows [README](flows/README.md)
-
-## Observability
-Prefect provides observability features, offering insights into task execution and resource orchestration.
-
-## Setup and Deployment
-
-### Prerequisites
-- Docker: Ensure Docker is installed on your system.
-- Docker Compose: Required for orchestrating services.
-
-### Steps
-1. Clone the Repository
-2. Configure Environment Variables
-   - Duplicate `.env.example` to `.env`
-   - Populate the `.env` file with necessary values.
-3. Build and Start Services
-   - For local development: `docker compose -f compose.local.yml up --build`
-   - For production: `docker compose -f compose.yml up --build`
-4.
 ## Resources
-- Prefect Documentation: [https://docs.prefect.io/](https://docs.prefect.io/)
-- Docker Documentation: [https://docs.docker.com/](https://docs.docker.com/)
-- SQLModel Documentation: [https://sqlmodel.tiangolo.com/](https://sqlmodel.tiangolo.com/)
-- Open Politics Documentation: [https://docs.open-politics.org/](https://docs.open-politics.org/) (But this documentation in the repo here is always newer)
+- [Prefect Documentation](https://docs.prefect.io/)
+- [Docker Documentation](https://docs.docker.com/)
+- [SQLModel Documentation](https://sqlmodel.tiangolo.com/)
+- [Open Politics Documentation](https://docs.open-politics.org/)
 

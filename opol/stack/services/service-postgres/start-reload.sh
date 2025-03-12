@@ -26,15 +26,15 @@ else
 fi
 
 # Configure Logfire and set up auto-tracing
-python -c "
-import os
-import logfire
-if os.environ.get('LOGFIRE_API_KEY') != '':
-    logfire.configure()
-    logfire.install_auto_tracing(modules=['app'], min_duration=0.01)
-else:
-    print('No LOGFIRE_API_KEY found, continuing without database tracing')
-"
+# python -c "
+# import os
+# import logfire
+# if os.environ.get('LOGFIRE_API_KEY') != '':
+#     logfire.configure()
+#     logfire.install_auto_tracing(modules=['app'], min_duration=0.01)
+# else:
+#     print('No LOGFIRE_API_KEY found, continuing without database tracing')
+# "
 
 # Start Uvicorn with live reload
 exec uvicorn --reload --host $HOST --port $PORT --log-level $LOG_LEVEL "$APP_MODULE"

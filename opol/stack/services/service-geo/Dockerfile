@@ -17,9 +17,10 @@ COPY ../../core/ ./core
 
 # Copy the main.py and other files from service-postgres
 COPY services/service-geo/main.py .
-COPY services/service-geo/run_with_logfire.py .
 
 COPY services/service-geo/start.sh .
+COPY services/service-geo/run_with_logfire.py .
+
 RUN chmod +x start.sh
 
 CMD ["./start.sh"]

@@ -183,5 +183,3 @@ ingress:
         - opol.io
       secretName: opol-tls
 
-cloudSqlProxy:
-  connectionName: open-politics-proje:us-central1:opp-production-1

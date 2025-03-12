@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+# Wait 5s
+sleep 5
+
 # Run the tests
 pytest tests/api.py
 

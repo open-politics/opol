@@ -56,4 +56,4 @@ class ContentEvaluation(BaseModel):
 
     # Override the default JSON serialization method
     def to_json(self):
-        return json.dumps(self.model_dump(), default=lambda o: o.value if isinstance(o, Enum) else o)
+        return json.dumpVB 

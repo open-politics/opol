@@ -14,6 +14,5 @@ RUN uv pip install --no-cache-dir -r requirements.txt
 # Copy the core directory
 COPY ../../core/ ./core
 
-RUN pip install prettyprint
+COPY flows/ ./flows
 
-COPY flows/entities/ ./
