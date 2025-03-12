@@ -60,6 +60,22 @@ Opol servers as the toolkit to streamline the full data lifecycle of the most co
 
 > We are aiming to build in OWLER from the OWS project. It should help facilitate easier configuration of large-scale scrape jobs
 
+## Quickstart
+```bash
+git clone https://github.com/open-politics/opol.git
+
+cd opol/opol/stack
+
+cp .env.local .env
+
+docker compose -f compose.local.yml up --build -d
+
+bash boot-local.sh
+```
+-> Dashboard (localhost:8089/dashboard)
+
+-> Ollama, Geocoder, Scraping & Entity Extraction Pipelines
+
 ## Data Coverage
 Because global coverage is huge, we focus on building reliable, modular methods that can be extended to new geographies and data sets. Current efforts are aimed at:
 
@@ -100,6 +116,7 @@ pip install opol
 ```bash
 git clone https://github.com/open-politics/opol.git
 cd opol/opol/stack
+cp .env.local .env
 docker compose -f compose.local.yml up --build -d
 bash boot-local.sh
 ```

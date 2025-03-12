@@ -31,7 +31,8 @@ This `opol/opol/stack` directory is at the heart of the application, responsible
 ```bash
 git clone https://github.com/open-politics/opol.git
 cd opol/opol/stack
-
+cp .env.local .env
+docker compose -f compose.local.yml up --build -d
 ```
 
 ### 2. Run the boot script (in another shell)
