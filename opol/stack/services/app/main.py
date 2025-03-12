@@ -436,8 +436,8 @@ async def check_services():
 async def read_root(request: Request):
     return templates.TemplateResponse("opol.html", {"request": request, "current_pool_type": current_pool_type})
 
-@app.get("/dashboardx", response_class=HTMLResponse)
-async def read_dashboardx(
+@app.get("/dashboard", response_class=HTMLResponse)
+async def read_dashboard(
     background_tasks: BackgroundTasks, 
     request: Request, 
     query: str = "culture and arts"
