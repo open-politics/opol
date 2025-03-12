@@ -5,6 +5,7 @@
 Our mission is to illuminate the dense web of politics, geopolitics, economics, and legislation through the systematic collection and analysis of open source intelligence. By building a foundation of modular, interconnected data operations, we're not just processing information — we're aiming to help architect the technological infrastructure of a more transparent, comprehensible, and genuinely more democratic future.
 
 All of our methods and principles are laid out in more detail on our [homepage](https://open-politics.org) and upcoming academic work. Especially all the patterns around classification schemes and reranking will need a comprehensive public discussion. Until we have set up such conversation framework please create a GitHub issue or contact us via mail at engage@open-politics.org for any questions.
+![OPP Webapp with Opol data](.github/media/opol-data-on-globe.png)
 
 ## Table of Contents
 - [Introduction](#introduction)
@@ -99,10 +100,8 @@ pip install opol
 ```bash
 git clone https://github.com/open-politics/opol.git
 cd opol/opol/stack
-mv .env.example .env
-
-# Boot with local Prefect server for orchestration
-docker compose -f compose.local.yml up --build
+docker compose -f compose.local.yml up --build -d
+bash boot-local.sh
 ```
 
 **Use the Python client in your code**
@@ -111,7 +110,7 @@ Just switch mode="local" to connect to your local stack or use the default remot
 ```python
 from opol import OPOL
 
-opol = OPOL(mode="local")
+opol = OPOL(mode="local") # or "container
 ...
 ```
 
