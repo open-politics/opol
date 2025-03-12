@@ -91,7 +91,9 @@ cd opol/opol/stack
 
 cp .env.local .env
 
-docker compose -f compose.local.yml up --build -d
+sudo docker network create opol-app-stack
+
+sudo docker compose -f compose.local.yml up --build -d
 
 bash boot-local.sh
 ```
