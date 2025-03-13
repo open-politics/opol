@@ -146,21 +146,7 @@ The system uses two main mechanics:
 
 The `.env.local` file contains all necessary configuration and is pre-configured for local use. No additional configuration is required for basic functionality.
 
-### Setup Options
 
-#### Full Stack (services + flows)
-The complete stack with all features is automatically set up by the `boot-local.sh` script. No additional configuration is needed.
-
-#### Light Variant
-If you only need core services without flows, you can use:
-```bash
-docker compose -f compose.local.yml up -d
-```
-
-This provides:
-- SearXNG Engine Search
-- Embeddings
-- Geocoding
 
 ## Development Notes
 
@@ -170,9 +156,11 @@ To develop flows:
 1. Set up a Prefect account or local server
 2. Build and push required images
 3. Start a Prefect work pool
-4. Register flows with the `register-flows.sh` script
+4. Register flows with the `prefect.yaml` + `register-dockerflows.sh` script
 
-Make sure the entrypoint paths in `prefect.yaml` match your local repository structure.
+Make sure the entrypoint paths in `prefect.yaml`:
+- Match the path relative to the prefect yaml
+- Match the path/ filestructure of the container that boots up
 
 ### Flow Execution
 
