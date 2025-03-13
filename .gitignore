@@ -40,3 +40,5 @@ package-lock.json
 package.json
 prefect-k8s.yaml
 skaffold.yaml
+
+opol/stack/flows/classification/results/archive/
