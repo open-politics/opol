@@ -31,7 +31,7 @@ class Embeddings(BaseClient):
                          service_name="service-embeddings", 
                          port=420)
         
-        self.use_api = use_api
+        self.use_api = use_api if use_api is not None else False
         self.api_provider = api_provider
         self.api_provider_key = api_provider_key
     
