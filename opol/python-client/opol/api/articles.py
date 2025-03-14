@@ -64,3 +64,16 @@ class Articles(BaseClient):
         if date:
             params["date"] = date
         return self.get(endpoint, params)
+
+    def by_id(self, article_id: str) -> Dict:
+        """
+        Retrieve a specific article by its ID.
+        
+        Args:
+            article_id: The UUID of the article to retrieve
+            
+        Returns:
+            Dict: The article data
+        """
+        endpoint = f"api/v2/search/contents/{article_id}"
+        return self.get(endpoint)
