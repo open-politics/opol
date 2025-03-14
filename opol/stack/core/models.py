@@ -195,7 +195,7 @@ class ContentEvaluation(SQLModel, table=True):
     content_id: uuid.UUID = Field(foreign_key="content.id")
 
     # Thematic Locations
-    thematic_locations: Optional[List[str]] = Field(default=None, sa_column=Column(ARRAY(Text)))
+    top_locations: Optional[List[str]] = Field(default=None, sa_column=Column(ARRAY(Text)))
 
     # Rhetoric
     rhetoric: Optional[str] = Field(default="neutral")

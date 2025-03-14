@@ -1,6 +1,7 @@
 from typing import List, Optional
 from pydantic import BaseModel
 import json
+from datetime import datetime, timedelta, timezone
 
 from .client_base import BaseClient
 
@@ -16,8 +17,31 @@ class Geo(BaseClient):
             kwargs['ids'] = args[0]
         return self.by_id(*args, **kwargs)
     
-    def json_by_event(self, event_type: str, limit: Optional[int] = 100, pretty: Optional[bool] = False) -> dict:
+    def json_by_event(
+        self, 
+        event_type: str, 
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        limit: Optional[int] = 100, 
+        pretty: Optional[bool] = False
+    ) -> dict:
+        """
+        Get GeoJSON data for a specific event type and optional date range.
+        
+        Args:
+            event_type: Type of event to filter (e.g. "Politics", "Protests")
+            start_date: Optional ISO format start date (e.g. "2023-01-01T00:00:00+00:00") 
+            end_date: Optional ISO format end date (e.g. "2023-12-31T23:59:59+00:00")
+            limit: Maximum number of locations to return
+            pretty: If True, pretty-print the JSON response
+        """
         endpoint = f"dynamic_geojson?event_type={event_type}&limit={limit}"
+        
+        if start_date:
+            endpoint += f"&start_date={start_date}"
+        if end_date:
+            endpoint += f"&end_date={end_date}"
+        
         if pretty:
             response = self.get(endpoint)
             print(json.dumps(response, indent=4))
@@ -29,8 +53,29 @@ class Geo(BaseClient):
         endpoint = f"geocode_location?location={location}"
         return self.get(endpoint)
 
-    def get_geojson(self, type: str = "Politics") -> dict:
-        endpoint = f"dynamic_geojson?event_type={type}&limit=100"
+    def get_geojson(
+        self, 
+        type: str = "Politics", 
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        limit: int = 100
+    ) -> dict:
+        """
+        Get GeoJSON data with filters.
+        
+        Args:
+            type: Event type to filter by
+            start_date: Optional ISO format start date 
+            end_date: Optional ISO format end date
+            limit: Maximum number of locations
+        """
+        endpoint = f"dynamic_geojson?event_type={type}&limit={limit}"
+        
+        if start_date:
+            endpoint += f"&start_date={start_date}"
+        if end_date:
+            endpoint += f"&end_date={end_date}"
+        
         return self.get(endpoint)
     
     def by_id(self, ids: List[str], pretty: bool = False) -> dict:
@@ -43,3 +88,30 @@ class Geo(BaseClient):
             return response
         else:
             return self.post(endpoint, json=params)
+
+    def json_for_timeframe(
+        self,
+        event_type: str,
+        days_back: int = 30,
+        limit: int = 100,
+        pretty: bool = False
+    ) -> dict:
+        """
+        Get GeoJSON data for a specific number of days back from now.
+        
+        Args:
+            event_type: Type of event to filter
+            days_back: Number of days back from today to include
+            limit: Maximum number of locations
+            pretty: If True, pretty-print the JSON
+        """
+        end_date = datetime.now(timezone.utc).isoformat()
+        start_date = (datetime.now(timezone.utc) - timedelta(days=days_back)).isoformat()
+        
+        return self.json_by_event(
+            event_type=event_type,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit,
+            pretty=pretty
+        )
