@@ -53,30 +53,40 @@ class Geo(BaseClient):
         endpoint = f"geocode_location?location={location}"
         return self.get(endpoint)
 
-    def get_geojson(
-        self, 
-        type: str = "Politics", 
+    def json(
+        self,
+        event_type: Optional[str] = None,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
-        limit: int = 100
+        limit: int = 100,
+        pretty: bool = False
     ) -> dict:
         """
-        Get GeoJSON data with filters.
+        Get GeoJSON data with optional filtering.
+        If event_type is not specified, returns all event types.
         
         Args:
-            type: Event type to filter by
+            event_type: Optional event type to filter by
             start_date: Optional ISO format start date 
             end_date: Optional ISO format end date
             limit: Maximum number of locations
+            pretty: If True, pretty-print the JSON response
         """
-        endpoint = f"dynamic_geojson?event_type={type}&limit={limit}"
+        endpoint = f"dynamic_geojson?limit={limit}"
         
+        if event_type:
+            endpoint += f"&event_type={event_type}"
         if start_date:
             endpoint += f"&start_date={start_date}"
         if end_date:
             endpoint += f"&end_date={end_date}"
         
-        return self.get(endpoint)
+        if pretty:
+            response = self.get(endpoint)
+            print(json.dumps(response, indent=4))
+            return response
+        else:
+            return self.get(endpoint)
     
     def by_id(self, ids: List[str], pretty: bool = False) -> dict:
         endpoint = "geojson_by_content_ids"
