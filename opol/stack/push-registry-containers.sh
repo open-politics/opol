@@ -28,6 +28,7 @@ declare -A services=(
 
 # List of flows with their Dockerfile paths and context paths
 declare -A flows=(
+  ["flow-all"]="./flows/Dockerfile ."
   ["flow-classification"]="./services/flows/classification/Dockerfile ."
   ["flow-embeddings"]="./flows/embeddings/Dockerfile ."
   ["flow-entities"]="./flows/entities/Dockerfile ."
