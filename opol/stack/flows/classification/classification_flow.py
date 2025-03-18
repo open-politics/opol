@@ -83,7 +83,7 @@ class ContentEvaluation(BaseModel):
     """
     Evaluate content for political analysis across dimensions: locations, rhetoric, impact, events, and categories.
 
-    1. Locations: Identify and thematic locations.
+    1. Locations: Identify and classify locations.
     2. Rhetoric: Determine tone: "neutral," "emotional," "argumentative," "optimistic," "pessimistic."
     3. Impact: Assess sociocultural, global/regional political, and economic impacts on a scale of 0-10.
        - Sociocultural: Cultural and societal relevance.
@@ -93,7 +93,7 @@ class ContentEvaluation(BaseModel):
     5. Categories: List content/ news categories.
     """
 
-    thematic_locations: Optional[List[str]] = Field(None)
+    top_locations: Optional[List[str]] = Field(None)
 
     # Impact Analysis
     sociocultural_interest: Optional[int] = Field(None, ge=0, le=10)
@@ -156,8 +156,11 @@ async def evaluate_content(content: Content) -> ContentEvaluation:
     try:
         content_text = f"Content Title: {content.title}\n\nContent: {content.text_content[:320]}"
         sys_prompt = f"""
-        The general relevance of the content. If it should be passed on for further analysis. The domain is open source political intelligence.
-        Use "Other" to sort out irrelevant, anectdotal or basic webpage content (like 404 pages, Data Privacy or similar).
+        Evaluate this content for political analysis. The domain is open source political intelligence.
+
+        Pay special attention to identifying top locations - important geographical areas that this content relates to.
+        These locations will be used for mapping visualization, so include only significant geographical entities
+        (countries, regions, cities) that are central to the content.
         """
         classification_result = xclass.classify(ContentEvaluation, sys_prompt, content_text)
         return classification_result
@@ -191,7 +194,6 @@ async def classify_contents_flow(batch_size: int):
         return []
 
     futures = [classify_content.submit(content) for content in contents]
-
     results = [future.result() for future in futures]  # Resolve futures
     evaluated_contents = []
 
@@ -199,17 +201,15 @@ async def classify_contents_flow(batch_size: int):
         if not content_dict:
             continue
         try:
-            if content_dict.get("type") != "Other":
+            if content_dict.get("content_type") != "Other":
                 llm_evaluation = await evaluate_content(content)
-                db_evaluation = ContentEvaluation(
-                    content_id=content.id,
-                    **llm_evaluation.model_dump()
-                )
-
+                
+                # Create content dict with top_locations already in the evaluation
                 content_dict_processed = {
                     'url': content.url,
                     'title': content.title,
-                    'evaluations': db_evaluation.model_dump(exclude={'id'})
+                    'evaluations': llm_evaluation.model_dump(exclude={'id'})
+                    # No need to map thematic_locations to top_locations - it's already top_locations
                 }
                 evaluated_contents.append(content_dict_processed)
             else:
@@ -235,7 +235,7 @@ async def process_content(content):
     try:
         relevance = await classify_content(content)
         logger.info(f"Relevance result: {relevance}")
-        if relevance.get("type") == "Other":
+        if relevance.get("content_type") == "Other":
             logger.info(f"Content classified as irrelevant: {content.title[:50]}...")
             redis_conn = await Redis.from_url(get_redis_url(), db=4)
             await redis_conn.rpush('filtered_out_queue', json.dumps(content.model_dump(), cls=UUIDEncoder))

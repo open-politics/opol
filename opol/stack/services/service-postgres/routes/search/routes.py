@@ -30,6 +30,7 @@ from sqlalchemy.types import DateTime
 from pydantic import BaseModel, field_validator
 from opol import OPOL
 import os
+
 opol = OPOL(mode=os.getenv("OPOL_MODE"), api_key=os.getenv("OPOL_API_KEY"))
 
 router = APIRouter()
@@ -133,8 +134,9 @@ async def get_contents(
                 elif search_type == SearchType.SEMANTIC:
                     try:
                         async with httpx.AsyncClient() as client:
-                            from opol.api.embeddings import EmbeddingTypes
-                            query_embeddings = opol.embeddings.generate(search_query, EmbeddingTypes.QUERY)
+                            from opol.api.embeddings import EmbeddingTypes, Embeddings
+                            embedding_client = Embeddings(mode="local")
+                            query_embeddings = embedding_client.generate(search_query, EmbeddingTypes.QUERY)
                             
                             # Modified query to include the distance in the SELECT list
                             query = (

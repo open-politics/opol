@@ -579,7 +579,7 @@ async def store_contents_with_classification(session: AsyncSession = Depends(get
 
                 if content:
                     evaluation_data = content_data.get('evaluations', {})
-                    evaluation_data = {
+                    evaluation_obj = {
                         'content_id': content.id,
                         'rhetoric': evaluation_data.get('rhetoric', 'neutral'), 
                         'sociocultural_interest': evaluation_data.get('sociocultural_interest', 0),
@@ -590,7 +590,8 @@ async def store_contents_with_classification(session: AsyncSession = Depends(get
                         'event_type': evaluation_data.get('event_type', 'other'),
                         'event_subtype': evaluation_data.get('event_subtype', 'other'),
                         'keywords': evaluation_data.get('keywords', []),
-                        'categories': evaluation_data.get('categories', [])
+                        'categories': evaluation_data.get('categories', []),
+                        'top_locations': evaluation_data.get('top_locations', [])
                     }
                     
                     # Check if evaluation exists
@@ -603,16 +604,46 @@ async def store_contents_with_classification(session: AsyncSession = Depends(get
                         stmt = (
                             update(ContentEvaluation)
                             .where(ContentEvaluation.content_id == content.id)
-                            .values(**evaluation_data)
+                            .values(**evaluation_obj)
                         )
                         await session.execute(stmt)
                     else:
                         # Create new evaluation
-                        evaluation = ContentEvaluation(**evaluation_data)
+                        evaluation = ContentEvaluation(**evaluation_obj)
                         session.add(evaluation)
                     
                     await session.flush()
                     logger.info(f"Updated content and evaluation: {content_data['url']}")
+
+                    # Handle top locations directly from the evaluations
+                    top_locations = evaluation_data.get('top_locations', [])
+                    
+                    if top_locations:
+                        for loc_name in top_locations:
+                            # Find or create location
+                            stmt_loc = select(Location).where(Location.name == loc_name)
+                            result = await session.execute(stmt_loc)
+                            location = result.scalar_one_or_none()
+
+                            if not location:
+                                location = Location(name=loc_name)
+                                session.add(location)
+                                await session.flush()
+
+                            # Set up content-location relationship with is_top_location=True
+                            upsert_content_location = insert(ContentLocation).values(
+                                content_id=content.id,
+                                location_id=location.id,
+                                frequency=1,
+                                is_top_location=True  # This is the critical flag for geojson
+                            ).on_conflict_do_update(
+                                index_elements=['content_id', 'location_id'],
+                                set_={
+                                    'frequency': ContentLocation.frequency + 1,
+                                    'is_top_location': True
+                                }
+                            )
+                            await session.execute(upsert_content_location)
                 else:
                     # if not existing, insert new content
                     content = Content(**content_data)

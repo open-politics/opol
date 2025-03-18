@@ -174,7 +174,7 @@ def apply_search_filters(query, search_query: Optional[str], search_type: Search
         return query.where(search_condition)
     elif search_type.lower() == 'semantic':
         from opol.api.embeddings import Embeddings
-        embedder = Embeddings(mode="local", use_api=True, api_provider="jina", api_provider_key=os.getenv("JINA_API_KEY"))
+        embedder = Embeddings(mode="local", use_api=False, api_provider="jina", api_provider_key=os.getenv("JINA_API_KEY"))
         embeddings = embedder.generate(search_query, "retrieval.query")
         # Modify the query to include distance calculation
         return (
@@ -1007,3 +1007,75 @@ async def get_related_entities(
                 logger.info(f"Entity '{entity_name}' exists in the database but no related entities found")
             else:
                 logger.warning(f"Entity '{entity_name}' does not exist in the database")
+
+@router.get("/contents/{article_id}")
+async def get_article_by_id(
+    article_id: str,
+    session: AsyncSession = Depends(get_session)
+):
+    """
+    Retrieve a specific article by its ID.
+    """
+    try:
+        # Convert string ID to UUID
+        article_uuid = uuid.UUID(article_id)
+        
+        # Query to get the article with its relations
+        query = (
+            select(Content)
+            .options(
+                selectinload(Content.entities).selectinload(Entity.locations),
+                selectinload(Content.tags),
+                selectinload(Content.evaluation),
+                selectinload(Content.media_details)
+            )
+            .where(Content.id == article_uuid)
+        )
+        
+        result = await session.execute(query)
+        content = result.unique().scalar_one_or_none()
+        
+        if content is None:
+            raise HTTPException(status_code=404, detail=f"Article with ID {article_id} not found")
+        
+        # Format the response in the same way as other article endpoints
+        content_data = {
+            "id": str(content.id),
+            "url": content.url,
+            "title": content.title,
+            "source": content.source,
+            "insertion_date": content.insertion_date,
+            "text_content": content.text_content,
+            "top_image": content.media_details.top_image if content.media_details else None,
+            "entities": [
+                {
+                    "id": str(e.id),
+                    "name": e.name,
+                    "entity_type": e.entity_type,
+                    "locations": [
+                        {
+                            "name": loc.name,
+                            "location_type": loc.location_type,
+                            "coordinates": loc.coordinates.tolist() if loc.coordinates else None
+                        } for loc in e.locations
+                    ] if e.locations else []
+                } for e in content.entities
+            ] if content.entities else [],
+            "tags": [
+                {
+                    "id": str(t.id),
+                    "name": t.name
+                } for t in (content.tags or [])
+            ],
+            "evaluation": content.evaluation.dict() if content.evaluation else None
+        }
+        
+        return content_data
+        
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid article ID format")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving article with ID {article_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error retrieving article")

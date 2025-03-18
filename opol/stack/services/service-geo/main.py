@@ -86,35 +86,69 @@ class GeoManager:
     async def generate_geojson(
         self,
         filter_event_type: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
         limit: int = 100
     ) -> dict:
         """
         Generate a GeoJSON FeatureCollection based on the provided filters.
+        Query strategy: top locations → date range → event type (optional)
+        
+        If date range is not specified, defaults to the last 7 days.
         """
-        # Build base query for Locations with optional event_type filtering
-        location_query = select(Location).options(
-            selectinload(Location.contents).selectinload(Content.evaluation),
-            selectinload(Location.contents).selectinload(Content.entities)
-        ).where(Location.coordinates != None).limit(limit)
+        # If both dates are None, default to last 7 days
+        if start_date is None and end_date is None:
+            end_date = datetime.now(timezone.utc).isoformat()
+            start_date = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+        # If only end_date is None, default to now
+        elif end_date is None:
+            end_date = datetime.now(timezone.utc).isoformat()
+        # If only start_date is None, default to 7 days before end_date
+        elif start_date is None:
+            end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00') if 'Z' in end_date else end_date)
+            start_date = (end_dt - timedelta(days=7)).isoformat()
 
+        # Log the final date range
+        self.logger.info(f"Using date range: {start_date[:19]} to {end_date[:19]}")
+
+        # Base query always filters for top locations, valid coordinates, and date range
+        location_query = (
+            select(Location)
+            .options(
+                selectinload(Location.contents).selectinload(Content.evaluation),
+                selectinload(Location.contents).selectinload(Content.entities)
+            )
+            .join(
+                ContentLocation, ContentLocation.location_id == Location.id
+            )
+            .join(
+                Content, Content.id == ContentLocation.content_id
+            )
+            .where(
+                Location.coordinates != None,
+                ContentLocation.is_top_location == True,
+                Content.insertion_date >= start_date,
+                Content.insertion_date <= end_date
+            )
+            .order_by(Content.insertion_date.desc())
+            .limit(limit)
+        )
+
+        # Add event type filter if specified
         if filter_event_type:
             location_query = location_query.join(
-                ContentLocation, ContentLocation.location_id == Location.id
-            ).join(
-                Content, Content.id == ContentLocation.content_id
-            ).join(
                 ContentEvaluation, ContentEvaluation.content_id == Content.id
             ).where(
-                ContentEvaluation.event_type == filter_event_type,
-                ContentLocation.is_top_location == True
-            ).where(
-                Content.insertion_date >= (datetime.now(timezone.utc) - timedelta(weeks=12)).isoformat()
-            ).order_by(Content.insertion_date.desc()).limit(limit)
-
+                ContentEvaluation.event_type == filter_event_type
+            )
 
         result = await self.session.execute(location_query)
         locations = result.scalars().unique().all()
-        self.logger.info(f"Retrieved {len(locations)} locations from the DB, filter_event_type={filter_event_type}")
+        self.logger.info(
+            f"Retrieved {len(locations)} locations from the DB, "
+            f"filter_event_type={filter_event_type}, "
+            f"date_range={start_date[:10]} to {end_date[:10]}"
+        )
 
         features = []
         for loc in locations:
@@ -123,10 +157,17 @@ class GeoManager:
                 
                 contents_list = []
                 for content in loc.contents:
+                    # Double-check date filter on content level
+                    if (content.insertion_date < start_date or content.insertion_date > end_date):
+                        self.logger.debug(f"Skipping content ID {content.id} outside date range: {content.insertion_date}")
+                        continue
+                    
+                    # Double-check event type filter on content level if needed
                     if filter_event_type and content.evaluation and content.evaluation.event_type != filter_event_type:
                         self.logger.debug(f"Skipping content ID {content.id} due to event type mismatch: {content.evaluation.event_type}")
                         continue
 
+                    # Process content as before
                     eval_data = content.evaluation
                     record_eval = {}
                     if eval_data:
@@ -139,7 +180,6 @@ class GeoManager:
                             "global_economic_impact": eval_data.global_economic_impact,
                             "regional_economic_impact": eval_data.regional_economic_impact,
                         }
-                        self.logger.debug(f"Evaluation data for content ID {content.id}: {record_eval}")
 
                     top_entities = [ent.name for ent in content.entities if getattr(ent, 'is_top', False)]
 
@@ -150,103 +190,104 @@ class GeoManager:
                         "source": content.source,
                         "insertion_date": content.insertion_date,
                         "classification": record_eval,
-                        "top_entities": top_entities
+                        "top_entities": top_entities,
                     })
 
-                feature = Feature(
-                    geometry=Point(coords),
-                    properties={
-                        "location_id": str(loc.id),
-                        "location_name": loc.name,
-                        "location_type": loc.location_type,
-                        "content_count": len(contents_list),
-                        "contents": contents_list
-                    }
-                )
-                features.append(feature)
+                # Only create feature if there are contents in the specified range
+                if contents_list:
+                    feature = Feature(
+                        geometry=Point(coords),
+                        properties={
+                            "location_id": str(loc.id),
+                            "location_name": loc.name,
+                            "location_type": loc.location_type,
+                            "content_count": len(contents_list),
+                            "contents": contents_list,
+                        }
+                    )
+                    features.append(feature)
+                else:
+                    self.logger.debug(f"No valid contents for location ID {loc.id} after filtering")
             else:
                 self.logger.warning(f"Invalid coordinates for location ID {loc.id}: {loc.coordinates}")
 
         return FeatureCollection(features)
 
-    async def warm_cache(self):
-        """
-        Warm up the main "all-locations" cache and some sample event types.
-        """
-        self.logger.info("Starting cache warm-up")
-        redis_cache = get_redis_cache()
-        try:
-            # Generate base (all) data
-            base_fc = await self.generate_geojson(filter_event_type=None, limit=1000)
-            redis_cache.setex("geojson_all", CACHE_EXPIRY, pickle.dumps(base_fc))
-
-            # Generate some example event types
-            for ev_type in ["Protests", "Crisis", "Politics"]:
-                ev_fc = await self.generate_geojson(filter_event_type=ev_type, limit=250)
-                redis_cache.setex(f"geojson_events_{ev_type}", CACHE_EXPIRY, pickle.dumps(ev_fc))
-
-            redis_cache.set(LAST_WARM_KEY, datetime.now(timezone.utc).isoformat())
-            self.logger.info("Finished cache warm-up")
-        except Exception as e:
-            self.logger.error(f"Error during cache warm-up: {e}")
-        finally:
-            redis_cache.close()
-
-
 @app.get("/dynamic_geojson")
 async def get_dynamic_geojson(
-    background_tasks: BackgroundTasks,
     event_type: Optional[str] = Query(None, description="If set, filter by event_type"),
-    limit: int = 100,
+    start_date: Optional[str] = Query(None, description="ISO formatted start date, defaults to 7 days ago if both dates are unspecified"),
+    end_date: Optional[str] = Query(None, description="ISO formatted end date, defaults to now if unspecified"),
+    limit: int = Query(100, description="Maximum number of locations to return"),
     session: AsyncSession = Depends(get_session)
 ):
     """
-    Get dynamic GeoJSON, optionally filtering by event_type, with an upper limit on returned contents.
-    Caches the "all-locations" data if not present, or if event_type is set, generates fresh data.
+    Get dynamic GeoJSON, optionally filtering by event_type and date range.
+    If no date range is specified, defaults to the last 7 days.
+    Cache temporarily removed for troubleshooting.
     """
-    redis_cache = get_redis_cache()
-    manager = GeoManager(session)
+    # Handle date defaults
+    if start_date is None and end_date is None:
+        # Default to last 7 days
+        end_date = datetime.now(timezone.utc).isoformat()
+        start_date = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+        logger.info(f"No date range specified, defaulting to last 7 days: {start_date[:10]} to {end_date[:10]}")
+    elif end_date is None:
+        # Default end date to now
+        end_date = datetime.now(timezone.utc).isoformat()
+    elif start_date is None:
+        # Default start date to 7 days before end date
+        try:
+            end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00') if 'Z' in end_date else end_date)
+            start_date = (end_dt - timedelta(days=7)).isoformat()
+        except ValueError:
+            logger.error(f"Invalid end_date format: {end_date}")
+            raise HTTPException(status_code=400, detail="Invalid end_date format. Use ISO format (YYYY-MM-DDTHH:MM:SS+00:00)")
 
-    # Try retrieving from cache if no event filter
-    cache_key = "geojson_all" if not event_type else f"geojson_events_{event_type}"
+    # Validate date order
     try:
-        if not event_type:
-            cached_data = redis_cache.get(cache_key)
-            if cached_data:
-                # If data is stale, we can do a warm-up in background
-                last_warm = redis_cache.get(LAST_WARM_KEY)
-                if last_warm:
-                    last_warm_time = datetime.fromisoformat(last_warm.decode())
-                    if datetime.now(timezone.utc) - last_warm_time > timedelta(minutes=14):
-                        background_tasks.add_task(manager.warm_cache)
-                return JSONResponse(content=pickle.loads(cached_data))
+        start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00') if 'Z' in start_date else start_date)
+        end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00') if 'Z' in end_date else end_date)
+        
+        if start_dt > end_dt:
+            logger.warning(f"Start date {start_date} is after end date {end_date}, swapping them")
+            start_date, end_date = end_date, start_date
+    except ValueError as e:
+        logger.error(f"Date parsing error: {e}")
+        raise HTTPException(status_code=400, detail=f"Invalid date format: {str(e)}. Use ISO format.")
 
-        # If no cache or event_type is specified, generate fresh.
-        feature_collection = await manager.generate_geojson(filter_event_type=event_type, limit=limit)
-
-        # If no event type, store in cache to speed up subsequent calls
-        if not event_type:
-            redis_cache.setex(cache_key, CACHE_EXPIRY, pickle.dumps(feature_collection))
+    try:
+        # Create manager and generate fresh data (no cache)
+        manager = GeoManager(session)
+        logger.info(f"Generating fresh GeoJSON with filters: event_type={event_type}, date_range={start_date[:10]} to {end_date[:10]}")
+        
+        feature_collection = await manager.generate_geojson(
+            filter_event_type=event_type,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit
+        )
 
         return JSONResponse(content=feature_collection)
-
     except Exception as e:
         logger.error(f"Error generating dynamic GeoJSON: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        redis_cache.close()
 
-
-@app.post("/warm_cache_now")
-async def force_cache_warm_up(session: AsyncSession = Depends(get_session)):
-    """
-    Force an immediate warm-up of the geojson caches.
-    """
-    manager = GeoManager(session)
-    await manager.warm_cache()
-    return {"message": "Cache warmed up successfully"}
-
-
+@app.get("/geojson_events")
+async def get_geojson_events(
+    event_type: str, 
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    limit: int = 100, 
+    session: AsyncSession = Depends(get_session)
+):
+    return await get_dynamic_geojson(
+        event_type=event_type, 
+        start_date=start_date,
+        end_date=end_date,
+        limit=limit, 
+        session=session
+    )
 
 def call_pelias_api(location, lang=None):
     custom_mappings = {
@@ -335,8 +376,3 @@ def get_country_data(country):
 @app.get("/healthz")
 def healthcheck():
     return {"message": "ok"}, 200
-
-
-@app.get("/geojson_events")
-async def get_geojson_events(event_type: str, limit: int = 100, session: AsyncSession = Depends(get_session), background_tasks: BackgroundTasks = None):
-    return await get_dynamic_geojson(event_type=event_type, limit=limit, session=session, background_tasks=background_tasks)
