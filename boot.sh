@@ -1,4 +1,3 @@
-git clone https://github.com/open-politics/opol.git
 cd opol/
 
 mkdir -p ./opol/stack/.store/data/placeholder
