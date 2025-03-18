@@ -1,4 +1,5 @@
-cd opol/
+#! /usr/bin/env bash
+
 
 mkdir -p ./opol/stack/.store/data/placeholder
 sudo chmod 777 ./opol/stack/.store/data/placeholder
