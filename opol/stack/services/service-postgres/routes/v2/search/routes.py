@@ -134,10 +134,12 @@ class TopEntitiesByScoreRequest(BaseModel):
 async def get_semantic_embeddings(query: str) -> list:
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{config.service_urls['service-embeddings']}/generate_query_embeddings",
-                params={"query": query}
+            response = await client.post(
+                f"{config.service_urls['service-embeddings']}/embeddings",
+                json={"embedding_type": "retrieval.query", "texts": [query]}
             )
+            # example raw json request:
+            #{"embedding_type": "retrieval.query", "texts": ["What is the capital of France?"]}
             response.raise_for_status()
             return response.json()["embeddings"]
     except Exception as e:
@@ -174,8 +176,10 @@ def apply_search_filters(query, search_query: Optional[str], search_type: Search
         return query.where(search_condition)
     elif search_type.lower() == 'semantic':
         from opol.api.embeddings import Embeddings
-        embedder = Embeddings(mode="local")
-        embeddings = embedder.generate(search_query, "retrieval.query")
+        embedder = Embeddings(mode="container")
+        embeddings = embedder.generate([search_query], "retrieval.query")
+        logger.info(f"Embeddings: {embeddings}")
+
         # Modify the query to include distance calculation
         return (
             select(
@@ -339,8 +343,9 @@ async def get_contents(
     try:
         async with session.begin():
             from opol.api.embeddings import EmbeddingTypes, Embeddings
-            embedder = Embeddings(mode="local", use_api=True, api_provider="jina", api_provider_key=os.getenv("JINA_API_KEY"))
-            query_embeddings = embedder.generate(params.search_query, "retrieval.query")
+            embedder = Embeddings(mode="container")
+            query_embeddings = embedder.generate([params.search_query], "retrieval.query")
+            query_embeddings = query_embeddings[0]
             
             query = (
                     select(
@@ -932,7 +937,7 @@ async def get_related_entities(
     """
     Retrieve entities that are most frequently associated with the given entity.
     """
-    entities = []  # Initialize entities to avoid UnboundLocalError
+    entities = []  
     try:
         # Subquery to find articles related to the given entity
         subquery = (

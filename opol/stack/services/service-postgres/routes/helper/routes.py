@@ -653,11 +653,18 @@ async def plot_contents(session: AsyncSession = Depends(get_session)):
 opol = OPOL(api_key=os.environ["OPOL_API_KEY"])
 
 # Initialize Classification Service
-xclass = opol.classification(
-    provider="Google",
-    model_name="models/gemini-1.5-flash-latest",
-    llm_api_key=os.environ["GOOGLE_API_KEY"]
-)
+if os.environ["LOCAL_LLM"] == "True":
+    xclass = opol.classification(
+        provider="ollama", 
+        model_name=os.environ.get("LOCAL_LLM_MODEL", "llama3.2:latest"), 
+        llm_api_key=""
+    )
+else:
+    xclass = opol.classification(
+        provider=os.environ.get("LLM_PROVIDER", "Google"), 
+        model_name=os.environ.get("LLM_MODEL", "models/gemini-2.0-flash-latest"), 
+        llm_api_key=os.environ.get("GOOGLE_API_KEY", "")
+    )
 
 
 @router.post("/classify_events_last_week")
