@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+sudo pip install prefect
+
 unset PREFECT_API_URL
 
 prefect config set PREFECT_API_URL="http://localhost:4200/api"
