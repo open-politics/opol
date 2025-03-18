@@ -86,16 +86,9 @@ Clone and boot the entire Opol infrastructure locally:
 
 ```bash
 git clone https://github.com/open-politics/opol.git
-
-cd opol/opol/stack
-
-cp .env.local .env
-
-sudo docker network create opol-app-stack
-
-sudo docker compose -f compose.local.yml up --build -d
-
-bash boot-local.sh
+```
+```bash 
+bash boot.sh
 ```
 
 This will give you access to:
