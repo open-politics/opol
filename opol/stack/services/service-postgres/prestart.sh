@@ -4,8 +4,8 @@
 python backend_pre_start.py
 
 # Migrate
-# alembic stamp head
-# alembic revision --autogenerate -m "Rename thematic_locations to top_locations in ContentEvaluation"
+alembic stamp head
+alembic revision --autogenerate -m "Initial migration"
 
 # Migrate
 alembic upgrade head
