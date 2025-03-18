@@ -4,26 +4,33 @@ WORKDIR /app/
 
 ENV UV_SYSTEM_PYTHON=1
 
-# Set PYTHONPATH
-ENV PYTHONPATH=/.
+# Install uv for faster dependency installation
+RUN pip install --no-cache-dir uv
 
-# Install dependencies
-RUN apt-get update && \
-    apt-get install -y netcat-traditional && \
-    rm -rf /var/lib/apt/lists/*
-
-RUN pip install uv
-
-# Copy the requirements.txt file and install Python dependencies
+# Copy only requirements file first to leverage Docker cache
 COPY services/service-postgres/requirements.txt /app/
 RUN uv pip install --no-cache-dir -r /app/requirements.txt
 
-# Copy the service-postgres directory
+FROM python:3.11-slim AS runtime
+
+WORKDIR /app/
+
+# Set PYTHONPATH
+ENV PYTHONPATH=/.
+
+# Copy installed packages from builder stage
+COPY --from=base /usr/local/lib/python3.11/site-packages/ /usr/local/lib/python3.11/site-packages/
+COPY --from=base /usr/local/bin/ /usr/local/bin/
+
+# Install only runtime dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends netcat-traditional && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy application code
 COPY services/service-postgres .
-
-# Copy the core directory
 COPY ../../core/ ./core
-
 
 RUN chmod +x start-reload.sh
 
