@@ -174,7 +174,7 @@ def apply_search_filters(query, search_query: Optional[str], search_type: Search
         return query.where(search_condition)
     elif search_type.lower() == 'semantic':
         from opol.api.embeddings import Embeddings
-        embedder = Embeddings(mode="local", use_api=False, api_provider="jina", api_provider_key=os.getenv("JINA_API_KEY"))
+        embedder = Embeddings(mode="local")
         embeddings = embedder.generate(search_query, "retrieval.query")
         # Modify the query to include distance calculation
         return (
