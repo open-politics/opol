@@ -9,4 +9,4 @@ cp .env.local .env
 sudo docker network create opol-app-stack
 sudo docker compose -f compose.local.yml up --build -d
 
-bash boot-local.sh
+bash boot-prefect-flows.sh
