@@ -88,6 +88,7 @@ Clone and boot the entire Opol infrastructure locally:
 git clone https://github.com/open-politics/opol.git
 ```
 ```bash 
+cd opol
 bash boot.sh
 ```
 
