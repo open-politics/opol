@@ -30,16 +30,15 @@ This `opol/opol/stack` directory is at the heart of the application, responsible
 ### 1. Clone the repository
 ```bash
 git clone https://github.com/open-politics/opol.git
-cd opol/opol/stack
-cp .env.local .env
-sudo docker network create opol-app-stack
-sudo docker compose -f compose.local.yml up --build -d
+```
+```bash
+bash boot.sh
 ```
 
 ### 2. Run the boot script (in another shell)
 Installs prefect via pip, sets the client url to the local prefect server, deploys the data pipelines and triggers a few them directly.
 ```bash
-bash boot-local.sh
+bash boot-prefect-flows.sh
 ```
 
 ### 3. Access & Use Opol
