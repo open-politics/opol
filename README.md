@@ -48,7 +48,7 @@ opol serves as a toolkit to streamline the full lifecycle of the most common dat
   - **Reranking**: Enhance search result relevance through semantic similarity scoring
 
 - **Entity Recognition & Geocoding**: 
-  - Identify key entities (people, locations, organizations)
+  - Identify key entities (people, locations, organisations)
   - Convert geographical references into latitude-longitude coordinates for geospatial analysis
 
 - **Data Storage & Management**:
