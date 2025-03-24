@@ -662,7 +662,7 @@ if os.environ["LOCAL_LLM"] == "True":
 else:
     xclass = opol.classification(
         provider=os.environ.get("LLM_PROVIDER", "Google"), 
-        model_name=os.environ.get("LLM_MODEL", "models/gemini-2.0-flash-latest"), 
+        model_name=os.environ.get("LLM_MODEL", "models/gemini-2.0-flash-exp"), 
         llm_api_key=os.environ.get("GOOGLE_API_KEY", "")
     )
 
