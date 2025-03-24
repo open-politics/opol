@@ -1,6 +1,6 @@
-Metadata-Version: 2.2
+Metadata-Version: 2.4
 Name: opol
-Version: 0.1.60
+Version: 0.1.61
 Summary: Main API client to interact with all OPOL services.
 Home-page: https://github.com/open-politics/opol
 Author: Jim Vincent Wagner
@@ -15,6 +15,7 @@ Description-Content-Type: text/markdown
 License-File: LICENSE
 Requires-Dist: requests
 Requires-Dist: pydantic
+Dynamic: license-file
 
 This is the python wrapper to interact with all OPOL services.
 

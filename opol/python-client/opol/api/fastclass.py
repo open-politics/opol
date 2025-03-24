@@ -45,7 +45,7 @@ class FastClass:
             self.client = instructor.from_openai(
                 OpenAI(
                     base_url={
-                        "container": "http://ollama:11434/v1",
+                        "container": "http://engine-ollama:11434/v1",
                         "local": "http://localhost:11434/v1"
                     }.get(os.environ.get("OPOL_MODE", ""), None),
                     api_key='ollama',
