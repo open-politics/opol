@@ -15,6 +15,7 @@ config = ServiceConfig()
 @task
 async def produce_flags(raise_on_failure=True):
     async with httpx.AsyncClient(timeout=1000) as client:
+        logger.info(f"Producing flags from {config.service_urls['service-postgres']}")
         response = await client.get(f"{config.service_urls['service-postgres']}/flags")
     if response.status_code != 200 and raise_on_failure:
         raise Exception("Failed to produce flags")

@@ -7,12 +7,12 @@ pull:
 
 deployments:
 
-  - name: meta
+  - name: docker-flow-meta
     entrypoint: ./flows/orchestration/orchestration.py:meta_flow
     work_pool:
       name: local-docker-pool
       job_variables:
-        image: runner-all-flows:latest
+        image: flowrunner-all:latest
         image_pull_policy: "Never"
         auto_remove: true
         env:
@@ -25,16 +25,16 @@ deployments:
     description: The main flow to orchestrate all flows.
     enforce_parameter_schema: true
     schedules:
-      - cron: "*/5 * * * *" # Run every 5 minutes
+      - cron: "*/5 * * * *" 
 
-  - name: scraping
+  - name: docker-flow-scraping
     entrypoint: ./flows/scraping/scrape_newssites.py:scrape_newssites_flow
     parameters:
       flags: ["cnn", "dw", "bbc"]
     work_pool:
       name: local-docker-pool
       job_variables:
-        image: runner-scraping-flow:latest
+        image: flowrunner-scraping:latest
         image_pull_policy: "Never"
         auto_remove: true
         env:
@@ -48,16 +48,16 @@ deployments:
     description: The main flow to scrape newssites.
     enforce_parameter_schema: true
     schedules:
-      - cron: "*/30 * * * *" # Run every 30 minutes
+      - cron: "*/30 * * * *" 
 
   
 
-  - name: entities
+  - name: docker-flow-entities
     entrypoint: ./flows/entities/extract_entities.py:extract_entities_flow
     work_pool:
       name: local-docker-pool
       job_variables:
-        image: runner-entities-flow:latest
+        image: flowrunner-entities:latest
         image_pull_policy: "Never"
         auto_remove: true
         env:
@@ -71,14 +71,14 @@ deployments:
     description: The main flow to extract entities.
     enforce_parameter_schema: true
     schedules:
-      - cron: "0 * * * *" # Run every hour
+      - cron: "0 * * * *" 
   
-  - name: embeddings
+  - name: docker-flow-embeddings
     entrypoint: ./flows/embeddings/generate_embeddings.py:generate_embeddings_flow
     work_pool:
       name: local-docker-pool
       job_variables:
-        image: runner-embeddings-flow:latest
+        image: flowrunner-embeddings:latest
         image_pull_policy: "Never"
         auto_remove: true
         env:
@@ -92,16 +92,16 @@ deployments:
     description: The main flow to generate embeddings.
     enforce_parameter_schema: true
     schedules:
-      - cron: "0 * * * *" # Run every hour
+      - cron: "0 * * * *" 
 
-  - name: geocoding
+  - name: docker-flow-geocoding
     entrypoint: ./flows/geocoding/geocode_locations.py:geocode_locations_flow
     parameters:
       batch_size: 200
     work_pool:
       name: local-docker-pool
       job_variables:
-        image: runner-all-flows:latest
+        image: flowrunner-all:latest
         image_pull_policy: "Never"
         auto_remove: true
         env:
@@ -114,16 +114,16 @@ deployments:
     description: The main flow to geocode locations.
     enforce_parameter_schema: true
     schedules:
-      - cron: "0 * * * *" # Run every hour
+      - cron: "0 * * * *" 
 
-  - name: classification
+  - name: docker-flow-classification
     entrypoint: ./flows/classification/classification_flow.py:classify_contents_flow
     parameters:
       batch_size: 20
     work_pool:
       name: local-docker-pool
       job_variables:
-        image: runner-all-flows:latest
+        image: flowrunner-all:latest
         image_pull_policy: "Never"
         auto_remove: true
         env:

@@ -28,14 +28,10 @@ declare -A services=(
 
 # List of flows with their Dockerfile paths and context paths
 declare -A flows=(
-  ["flow-all"]="./flows/Dockerfile ."
-  ["flow-classification"]="./services/flows/classification/Dockerfile ."
-  ["flow-embeddings"]="./flows/embeddings/Dockerfile ."
-  ["flow-entities"]="./flows/entities/Dockerfile ."
-  ["flow-pipeline"]="./services/app/Dockerfile ."
-  ["flow-scraping"]="./services/service-scraper/Dockerfile ."
-  ["flow-classification"]="./flows/Dockerfile ."
-  ["flow-scraping"]="./flows/scraping/Dockerfile ."
+  ["flowrunner-all"]="./flows/Dockerfile ."
+  ["flowrunner-embeddings"]="./flows/embeddings/Dockerfile ."
+  ["flowrunner-entities"]="./flows/entities/Dockerfile ."
+  ["flowrunner-scraping"]="./flows/scraping/Dockerfile ."
 )
 
 # Function to get tags for selected items
@@ -59,7 +55,7 @@ get_tags() {
 echo "Select an option:"
 echo "1) Build and push all"
 echo "2) Build and push services"
-echo "3) Build and push flows"
+echo "3) Build and push flow runners"
 echo "4) Select specific services and flows to build and push"
 read -p "Enter your choice: " choice
 

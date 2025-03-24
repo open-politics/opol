@@ -1,7 +1,34 @@
 services:
 
+  ### Index:
+  ## Service Categories:
+  ##
+  ## 1. APP
+  ##    - app-opol-core (Dashboard)
+  ##
+  ## 2. SERVICES
+  ##    - service-scraper
+  ##    - service-embeddings
+  ##    - service-entities
+  ##    - service-geo
+  ##    - service-postgres
+  ##
+  ## 3. ENGINES
+  ##    - engine-ollama
+  ##    - engine-pelias-placeholder
+  ##    - engine-prefect-server
+  ##    - engine-redis
+  ##    - engine-searxng
+  ##
+  ## 4. WORKERS
+  ##    - worker-prefect
+  ##
+  ## 5. FLOW RUN IMAGES
+  ##    - runner-all-flows
+  ##    - runner-scraping-flow
   ###########################################################################
   # APP/ DASHBOARD
+  ## built from /services/app/
   ###########################################################################
 
   app-opol-core:
@@ -13,10 +40,9 @@ services:
     volumes:
       - ./.store/backups:/app/backups
     env_file:
-      - .env
+      - .env.local
     environment:
-      - PREFECT_API_URL=${PREFECT_API_URL}
-      - PREFECT_API_KEY=${PREFECT_API_KEY}
+      - PREFECT_API_URL=http://engine-prefect-server:${PREFECT_SERVER_PORT}/api
     depends_on:
       - service-scraper
       - service-postgres
@@ -24,9 +50,10 @@ services:
     networks:
       - opol-app-stack
       - default
-  
+
   ###########################################################################
   # DATABASES
+  ## built from /services/ &
   ###########################################################################
 
   database-articles:
@@ -46,11 +73,53 @@ services:
     networks:
       - opol-app-stack
       - default
-  
+    env_file:
+      - .env.local
+  database-prefect:
+    image: postgres:16
+    restart: always
+    environment:
+      - POSTGRES_USER=${PREFECT_DB_USER}
+      - POSTGRES_PASSWORD=${PREFECT_DB_PASSWORD}
+      - POSTGRES_DB=${PREFECT_DB_NAME}
+    volumes:
+      - ./.store/data/prefect_db_data:/var/lib/postgresql/data
+    ports:
+      - "${PREFECT_DB_PORT}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PREFECT_DB_USER} -d ${PREFECT_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - default
+    env_file:
+      - .env.local
+
   ###########################################################################
   # ENGINES 
   ## Taxonomic mix, sometimes databases, sometimes full apps.
   ###########################################################################
+
+  ###########################################################################
+  ### AI / LLM Provider
+  ###########################################################################
+
+  engine-ollama:
+    build:
+      context: .
+      dockerfile: ./engines/engine-ollama/Dockerfile
+    ports:
+      - "${OLLAMA_PORT}:11434"
+    entrypoint: ["/usr/bin/bash", "/start.sh"]
+    volumes:
+      - ./.store/data/ollama:/root/.ollama
+      - ./engines/engine-ollama/start.sh:/start.sh
+    networks:
+      - default
+      - opol-app-stack
+    env_file:
+      - .env.local
 
   engine-pelias-placeholder:
     image: pelias/placeholder
@@ -79,6 +148,35 @@ services:
     networks:
       - opol-app-stack
       - default
+    env_file:
+      - .env.local
+
+
+  engine-prefect-server:
+    image: prefecthq/prefect:3-python3.12
+    restart: always
+    volumes:
+      - ./.store/data/prefect:/root/.prefect
+    command: >
+      sh -c "
+      prefect config set PREFECT_API_DATABASE_CONNECTION_URL=postgresql+asyncpg://${PREFECT_DB_USER}:${PREFECT_DB_PASSWORD}@database-prefect:5432/${PREFECT_DB_NAME} &&
+      prefect server start
+      "
+    environment:
+      - PREFECT_UI_URL=http://0.0.0.0:${PREFECT_SERVER_PORT}
+      - PREFECT_API_URL=http://0.0.0.0:${PREFECT_SERVER_PORT}/api
+      - PREFECT_SERVER_API_HOST=0.0.0.0
+      - PREFECT_API_DATABASE_CONNECTION_URL=postgresql+asyncpg://${PREFECT_DB_USER}:${PREFECT_DB_PASSWORD}@database-prefect:5432/${PREFECT_DB_NAME}
+    ports:
+      - "${PREFECT_SERVER_PORT}:${PREFECT_SERVER_PORT}"
+    depends_on:
+      database-prefect:
+        condition: service_healthy
+    networks:
+      - default
+      - opol-app-stack
+    env_file:
+      - .env.local
 
   engine-redis:
     image: redis:latest
@@ -91,6 +189,8 @@ services:
     networks:
       - opol-app-stack
       - default
+    env_file:
+      - .env.local
 
   engine-searxng:
     image: searxng/searxng
@@ -100,7 +200,7 @@ services:
       - default
       - opol-app-stack
     env_file:
-      - .env
+      - .env.local
     volumes:
       - ./core/configs/searxng/searxng-limiter.toml:/etc/searxng/limiter.toml
       - ./core/configs/searxng/searxng-settings.yml:/etc/searxng/settings.yml
@@ -120,10 +220,9 @@ services:
     depends_on:
       - service-postgres
     environment:
-      - PREFECT_API_URL=${PREFECT_API_URL}
-      - PREFECT_API_KEY=${PREFECT_API_KEY}
+      - PREFECT_API_URL=http://engine-prefect-server:${PREFECT_SERVER_PORT}/api
     env_file:
-      - .env
+      - .env.local
     networks:
       - opol-app-stack
       - default
@@ -138,11 +237,12 @@ services:
     depends_on:
       - service-postgres
     environment:
-      - PREFECT_API_URL=${PREFECT_API_URL}
-      - PREFECT_API_KEY=${PREFECT_API_KEY}
+      - PREFECT_API_URL=http://engine-prefect-server:${PREFECT_SERVER_PORT}/api
     networks:
       - opol-app-stack
       - default
+    env_file:
+      - .env.local
 
   service-geo:
     build:
@@ -154,24 +254,23 @@ services:
       - default
     ports:
       - "${GEO_SERVICE_PORT}:3690"
+    expose:
+      - "3690"
     env_file:
-      - .env
+      - .env.local
     environment:
-      - PREFECT_API_URL=${PREFECT_API_URL}
-      - PREFECT_API_KEY=${PREFECT_API_KEY}
+      - PREFECT_API_URL=http://engine-prefect-server:${PREFECT_SERVER_PORT}/api
 
   service-postgres:
     build: 
       context: .
       dockerfile: ./services/service-postgres/Dockerfile
-    restart: always
     volumes:
       - ./services/service-postgres/alembic/versions:/app/alembic/versions
       - ./.store/credentials/service-postgres-key.json:/app/credentials/service-postgres-key.json
-      - cloudsql:/cloudsql
       - ./.store/backups:/app/backups
     env_file:
-      - .env
+      - .env.local
     ports:
       - "${POSTGRES_SERVICE_PORT}:5434"
     networks:
@@ -185,66 +284,91 @@ services:
     ports:
       - "${SCRAPER_SERVICE_PORT}:8081"
     environment:
-      - PREFECT_API_URL=${PREFECT_API_URL}
+      - PREFECT_API_URL=http://engine-prefect-server:${PREFECT_SERVER_PORT}/api
       - PREFECT_API_KEY=${PREFECT_API_KEY}
     networks:
       - opol-app-stack
       - default
+    env_file:
+      - .env.local
 
   ###########################################################################
   # WORKERS
   ###########################################################################
 
   worker-prefect:
-    image: prefecthq/prefect:3-python3.11
     build:
       context: .
-      dockerfile: ./flows/Dockerfile
+      dockerfile: flows/Dockerfile
+    restart: on-failure:10
     command: >
-      sh -c "prefect worker start --pool opol-docker-pool --type docker --limit 5"
-    restart: always
+      sh -c "
+      pip install -q prefect-docker &&
+      prefect worker start --pool local-docker-pool --type docker --limit 2
+      "
+    depends_on:
+      - engine-prefect-server
+      - service-postgres
     environment:
-      - PREFECT_API_URL=${PREFECT_API_URL}
-      - PREFECT_API_KEY=${PREFECT_API_KEY}
+      - PREFECT_API_URL=http://engine-prefect-server:${PREFECT_SERVER_PORT}/api
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - default
       - opol-app-stack
-
-  ###########################################################################
-  # FLOW RUN IMAGES 
-  ###########################################################################
-  ### If you want to package dependencies independently. 
-  # Otherwise our flow runner image will most likely will have all the dependencies.
-
-  flow-runner:
-    build:
-      context: .
-      dockerfile: ./flows/Dockerfile
-    image: flow-runner:latest
-    command: "echo 'Runner flow image built successfully'"
-    networks:
-      - opol-app-stack
-      - default
     env_file:
       - .env.local
     
-  flow-entities:
+  ###########################################################################
+  # FLOW RUN IMAGES 
+  ###########################################################################
+
+  flowrunner-all:
     build:
       context: .
       dockerfile: ./flows/Dockerfile
-    image: flow-entities:latest
-    command: "echo 'Entities flow image built successfully'"
+    image: flowrunner-all:latest
+    # No need to start this container, we just want to build the image
+    command: "echo 'Image built successfully'"
+    networks:
+      - opol-app-stack
+      - default
 
+  flowrunner-scraping:
+    build:
+      context: .
+      dockerfile: ./flows/scraping/Dockerfile
+    image: flowrunner-scraping:latest
+    command: "echo 'Image built successfully'"
+    networks:
+      - opol-app-stack
+      - default
+
+  flowrunner-embeddings:
+    build:
+      context: .
+      dockerfile: ./flows/embeddings/Dockerfile
+    image: flowrunner-embeddings:latest
+    command: "echo 'Image built successfully'"
+    networks:
+      - opol-app-stack
+      - default
+
+  flowrunner-entities:
+    build:
+      context: .
+      dockerfile: ./flows/entities/Dockerfile
+    image: flowrunner-entities:latest
+    command: "echo 'Image built successfully'"
+    
 
   ###########################################################################
-  # ARCHIVED
+  # Ray Cluster
   ###########################################################################
 
-  # engine-ray-head:
+  # worker-ray-head:
   #   build: 
-  #     context: .
+  #     context: ./opol
   #     dockerfile: ./images/RayBase.Dockerfile
   #   command: >
   #     sh -c "ray start --head --port=6380 --dashboard-host=0.0.0.0 --block"
@@ -253,87 +377,32 @@ services:
   #     - "8265:8265"
   #     - "10001:10001"
   #   env_file:
-  #     - .env
+  #     - .env.local
   #   networks:
   #     - default
+  #     - opol-network
   #   environment:
   #     - RAY_HEAD_SERVICE_HOST=ray_head
   #     - RAY_HEAD_SERVICE_PORT=6380
-  #   shm_size: 10.24gb
+  #     - PREFECT_API_URL=http://engine-prefect-server:${PREFECT_SERVER_PORT}/api
+  #   shm_size: 8gb
 
-  # ray_worker:
+  # worker-ray-node:
   #   build: 
-  #     context: .
+  #     context: ./opol
   #     dockerfile: ./images/RayBase.Dockerfile
+  #   replicas: 2
   #   command: >
   #     sh -c "ray start --address=ray_head:6380 --block"
   #   networks:
   #     - default
+  #     - opol-network
   #   depends_on:
   #     - ray_head
-  #   shm_size: 10.24gb
-  # Deprecated. Since the opol package contains basically all the necessary code, we can just use that.
-  # classification-service:
-  #   build: 
-  #     context: .
-  #     dockerfile: ./services/classification-service/Dockerfile
-  #   ports:
-  #     - "${CLASSIFICATION_SERVICE_PORT}:5688"
-  #   environment:
-  #     - LOCAL_LLM=${LOCAL_LLM}
-  #     - OPENAI_API_KEY=${OPENAI_API_KEY}
-  #     - PREFECT_API_URL=${PREFECT_API_URL}
-  #     - PREFECT_API_KEY=${PREFECT_API_KEY}
-  #   env_file:
-  #     - .env
-  #   networks:
-  #     - opol-app-stack
-  #     - default
-
-  # ollama:
-  #   build: 
-  #     context: .
-  #     dockerfile: ./ollama/Dockerfile
-  #   pull_policy: always
-  #   deploy:
-  #     resources:
-  #       reservations:
-  #        devices:
-  #          - driver: nvidia
-  #            capabilities: ["gpu"]
-  #            count: all
-  #   ports:
-  #     - "11434:11434"
-  #   volumes:
-  #     - ./data/ollama:/root/.ollama
-  #   networks:
-  #     - default
-
-  
-  # prefect_database:
-  #   image: postgres:15
-  #   restart: always
-  #   environment:
-  #     - POSTGRES_USER=${PREFECT_DB_USER}
-  #     - POSTGRES_PASSWORD=${PREFECT_DB_PASSWORD}
-  #     - POSTGRES_DB=${PREFECT_DB_NAME}
-  #   volumes:
-  #     - ./data/prefect_db_data:/var/lib/postgresql/data
-  #   ports:
-  #     - "${PREFECT_DB_PORT}:5432"
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "pg_isready -U ${PREFECT_DB_USER} -d ${PREFECT_DB_NAME}"]
-  #     interval: 10s
-  #     timeout: 5s
-  #     retries: 5
-  #   networks:
-  #     - default
-
+  #   shm_size: 8gb
 
 volumes:
   articles_db_data:
-  cloudsql:
-  # prefect_db_data:
   prefect_data:
   r2r_db_data:
 
@@ -341,4 +410,5 @@ networks:
   default:
     external: false
   opol-app-stack:
+    driver: bridge
     external: true

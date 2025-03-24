@@ -15,7 +15,7 @@ deployments:
     work_pool:
       name: kubernetes-pool-prod
       job_variables:
-        image: openpoliticsproject/worker-base:latest
+        image: openpoliticsproject/flowrunner-all:latest
         env:
           LOGFIRE_TOKEN: ""
           REDIS_PORT: "6379"
@@ -37,7 +37,7 @@ deployments:
     work_pool:
       name: kubernetes-pool-prod
       job_variables:
-        image: openpoliticsproject/flow-scraping:latest
+        image: openpoliticsproject/flowrunner-scraping:latest
         env:
           LOGFIRE_TOKEN: ""
           REDIS_PORT: "6379"
@@ -59,7 +59,7 @@ deployments:
     work_pool:
       name: kubernetes-pool-prod
       job_variables:
-        image: openpoliticsproject/flow-entities:latest
+        image: openpoliticsproject/flowrunner-entities:latest
         env:
           LOGFIRE_TOKEN: ""
           REDIS_PORT: "6379"
@@ -81,7 +81,7 @@ deployments:
     work_pool:
       name: kubernetes-pool-prod
       job_variables:
-        image: openpoliticsproject/worker-base:latest
+        image: openpoliticsproject/flowrunner-geocoding:latest
         env:
           LOGFIRE_TOKEN: ""
           REDIS_PORT: "6379"
@@ -102,7 +102,7 @@ deployments:
     work_pool:
       name: kubernetes-pool-prod
       job_variables:
-        image: openpoliticsproject/worker-base:latest
+        image: openpoliticsproject/flowrunner-embeddings:latest
         env:
           LOGFIRE_TOKEN: ""
           REDIS_PORT: "6379"
@@ -126,7 +126,7 @@ deployments:
     work_pool:
       name: kubernetes-pool-prod
       job_variables:
-        image: openpoliticsproject/flow-embeddings:latest
+        image: openpoliticsproject/flowrunner-embeddings:latest
         env:
           LOGFIRE_TOKEN: ""
           REDIS_PORT: "6379"

@@ -80,6 +80,8 @@ class ServiceConfig:
             "service-geo": f"http://localhost:{GEO_SERVICE_PORT}",
             "pelias-placeholder": f"http://localhost:{PELIAS_PLACEHOLDER_PORT}",
             "redis": f"redis://localhost:{REDIS_PORT}",
+            "prefect-server": f"http://localhost:{PREFECT_SERVER_PORT}",
+            "ollama": f"http://localhost:{OLLAMA_PORT}",
             "searxng": f"http://localhost:{SEARXNG_PORT}",
         }
 

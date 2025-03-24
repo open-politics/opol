@@ -173,7 +173,15 @@ class PipelineManager:
         }
 
         if pool_type == "k8s":
-            process_steps = {k: v + "-k8s" for k, v in process_steps.items()}
+            k8s_process_steps = {
+                "produce_flags": "orchestration-flow/k8-flow-orchestration",
+                "scrape_sources": "scrape-newssites-flow/k8-flow-scraping",
+                "generate_embeddings": "generate-embeddings-flow/k8-flow-embeddings",
+                "extract_entities": "extract-entities-flow/k8-flow-entities",
+                "classify_contents": "classify-contents-flow/k8-flow-classification",
+                "geocode_contents": "geocode-locations-flow/k8-flow-geocoding",
+            }
+            process_steps = k8s_process_steps
 
         try:
             if step_name in job_creation_steps:

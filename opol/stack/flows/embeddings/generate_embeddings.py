@@ -5,23 +5,26 @@ from functools import lru_cache
 
 import numpy as np
 from prefect import flow, task
-from sentence_transformers import SentenceTransformer
+# from sentence_transformers import SentenceTransformer # removed for opol api
 from redis import Redis
 from core.models import Content
 from core.utils import get_redis_url, logger
 from prefect.task_runners import ConcurrentTaskRunner
 
 # Configuration Management
-model_name = os.getenv("EMBEDDING_MODEL_NAME", "jinaai/jina-embeddings-v3")
+# model_name = os.getenv("EMBEDDING_MODEL_NAME", "jinaai/jina-embeddings-v3")
+from opol import OPOL
 
-@lru_cache(maxsize=1)
-def get_model():
-    """Lazy loads the SentenceTransformer model using a singleton pattern."""
-    logger.info(f"Loading SentenceTransformer model: {model_name}")
-    return SentenceTransformer(model_name, trust_remote_code=True)
+opol = OPOL(mode=os.getenv("OPOL_MODE"), api_key=os.getenv("OPOL_API_KEY"))
+
+# @lru_cache(maxsize=1)
+# def get_model():
+#     """Lazy loads the SentenceTransformer model using a singleton pattern."""
+#     logger.info(f"Loading SentenceTransformer model: {model_name}")
+#     return SentenceTransformer(model_name, trust_remote_code=True)
 
 # Load the model once, using the cached function
-model = get_model()
+# model = get_model()
 
 @task(retries=3, retry_delay_seconds=60, log_prints=True)
 def retrieve_contents_from_redis(batch_size: int) -> List[Content]:
@@ -55,13 +58,15 @@ def process_batch(texts: List[str], embedding_type: str = "retrieval.passage") -
     """
     if texts:
         try:
-            embeddings = model.encode(
-                texts,
-                task=embedding_type,
-                prompt_name=embedding_type
-            )
-            logger.info(f"Generated embeddings for {len(texts)} texts")
-            return [embedding.tolist() for embedding in embeddings]
+            embeddings_list = []
+            for text in texts:
+                embeddings_request = opol.embeddings(
+                    text,
+                    embedding_type=embedding_type
+                )
+                embeddings = embeddings_request[0]
+                embeddings_list.append(embeddings)
+            return embeddings_list
         except Exception as e:
             logger.error(f"Error during embedding generation: {e}")
             return []
@@ -86,7 +91,7 @@ def write_contents_to_redis(contents_with_embeddings: List[dict]):
         redis_conn.close()
 
 @flow(task_runner=ConcurrentTaskRunner(max_workers=2), log_prints=True)
-def generate_embeddings_flow(batch_size: int = 10):
+def generate_embeddings_flow(batch_size: int = 5):
     """
     The main flow to retrieve, process, and store content embeddings using batch processing.
     """
@@ -141,9 +146,9 @@ def generate_embeddings_flow(batch_size: int = 10):
     # Write results to Redis
     write_contents_to_redis(contents_with_embeddings)
 
-# # -------------------------------------------------------------------
-# # OPTIONAL: For local testing only (without Prefect deployment)
-# # -------------------------------------------------------------------
+# -------------------------------------------------------------------
+# OPTIONAL: For local testing only (without Prefect deployment)
+# -------------------------------------------------------------------
 # if __name__ == "__main__":
 #     # Just run flow once with default params
-#     generate_embeddings_flow(batch_size=50)
+#     generate_embeddings_flow(batch_size=5)
