@@ -86,6 +86,22 @@ All data operations need two things with distinct operational requirements:
 
 This dual approach allows Opol to scale efficiently while remaining resource-conscious.
 
+#### Building the Images used for prefect
+Two ways to make prefect work with our docker images:
+
+##### 1. Local setup
+1.1 The compose file builds runner images that exit cleanly with exit code 0. These images are available in your "local registry" so the prefect.yaml chooses to search for locally built images when in the "job_variables" image_pull_policy: "Never" is set.
+So your steps are:
+- run `docker compsoe up --build -d` 
+- execute `bash boot-prefect-flows.sh` (which adjusts the target url for prefect cli commands and deploys the flows to the local server with the local docker images)
+##### 2. Prefect Cloud + Docker Hub Setup (our development setup)
+- 2.1 Push docker containers to your registry. We have a convenience script to push the required containers: `bash push-registry-containers.sh`. Set `ORG_NAME=Your_Docker_Hub_Org_Name` and run `bash push-registry-containers.sh` (make sure you can push to Docker Hub from your terminal session).
+
+- 2.2 Prefix the runner images job variables in `prefect.yaml` with your orgname so e.g. `image: runner-all-flows:latest` becomes `image: openpoliticsproject/runner-all-flows:latest`
+- 2.3 Comment out the `database-prefect` and`engine-prefect-server` in the compose.yml
+- 2.4 Set PREFECT_API_URL and PREFECT_API_KEY in your .env (not .env.local). This will automatically apply the the variables to your prefect.yaml deployments.
+- 2.5 
+
 ### Services
 
 
