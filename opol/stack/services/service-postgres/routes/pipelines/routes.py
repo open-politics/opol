@@ -321,12 +321,12 @@ async def store_contents_with_entities(
                 # Store Entities in ContentEntity table
                 entities_data = content_data.get('entities', [])
                 for entity_obj in entities_data:
-                    entity_name = entity_obj.get('text')
+                    entity_name = entity_obj.get('text')  
                     entity_type = entity_obj.get('tag')
                     is_top_flag = entity_obj.get('is_top', False)
 
-                    # Upsert into Entity
-                    stmt_entity = select(Entity).where(Entity.name == entity_name)
+                    # Direct upsert without normalization
+                    stmt_entity = select(Entity).where(func.lower(Entity.name) == func.lower(entity_name))
                     entity_result = await session.execute(stmt_entity)
                     entity = entity_result.scalar_one_or_none()
 

@@ -62,7 +62,7 @@ logger = logging.getLogger("uvicorn.access")
 logger.setLevel(logging.WARNING)
 
 # Global variable to store the current pool type
-current_pool_type = "docker"
+current_pool_type = "docker" if os.getenv("RUNNING_ENV") == "compose" else "k8s" if os.getenv("RUNNING_ENV") == "kubernetes" else "docker"
 
 class PipelineManager:
     def __init__(self, config: ServiceConfig, redis_conn: Redis):
