@@ -1,6 +1,6 @@
 ![opol](.github/media/opol.png)
 
-**Opol** is the beating heart of [*The Open Politics Project*](https://github.com/open-politics/open-politics) — a high-tech stack of efficiently operationalized and modular data methods integrated into a suite of tools for data-driven political analysis.
+**Opol** is the beating heart of [*The Open Politics Project*](https://github.com/open-politics/open-politics) — a modern stack of efficiently operationalized and modular data methods integrated into a suite of tools for data-driven political analysis.
 
 Our mission is to illuminate the dense web of politics, geopolitics, economics, and legislation through the systematic collection and analysis of open source intelligence. By building a foundation of modular, interconnected data operations, we're not just processing information — we're aiming to help architect the technological infrastructure of a more transparent, comprehensible, and genuinely more democratic future.
 
