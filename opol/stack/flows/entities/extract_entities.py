@@ -214,7 +214,7 @@ def push_entities(contents_with_entities: List[Tuple[Content, List[Tuple[str, st
         logger.error(f"Redis error while pushing entities: {e}")
 
 @flow(log_prints=True)
-def extract_entities_flow(batch_size: int = 50):
+def extract_entities_flow(batch_size: int = 20):
     logger.info("Starting entity extraction flow.")
     contents = retrieve_contents(batch_size=batch_size)
     if not contents:
