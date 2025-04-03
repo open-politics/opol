@@ -119,7 +119,7 @@ services:
       - default
       - opol-app-stack
     env_file:
-      - .env.local
+      - .env
 
   engine-pelias-placeholder:
     image: pelias/placeholder

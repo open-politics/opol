@@ -64,7 +64,6 @@ deployments:
           LOGFIRE_TOKEN: ""
           REDIS_PORT: "6379"
           REDIS_URL: "redis://engine-redis:6379"
-          PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION: "python"
         networks:
           - opol-app-stack
     version: "1.0.0"

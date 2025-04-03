@@ -50,10 +50,9 @@ deployments:
     schedules:
       - cron: "*/30 * * * *" 
 
-  
 
   - name: docker-flow-entities
-    entrypoint: ./flows/entities/extract_entities.py:extract_entities_flow
+    entrypoint: ./flows/entities/extract_entities_llm.py:extract_entities_flow
     work_pool:
       name: local-docker-pool
       job_variables:
@@ -63,7 +62,6 @@ deployments:
         env:
           REDIS_PORT: "6379"
           REDIS_URL: "redis://engine-redis:6379"
-          PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION: "python"
         networks:
           - opol-app-stack
     version: "1.0.0"
@@ -78,13 +76,13 @@ deployments:
     work_pool:
       name: local-docker-pool
       job_variables:
-        image: flowrunner-embeddings:latest
+        image: flowrunner-all:latest
         image_pull_policy: "Never"
         auto_remove: true
         env:
           REDIS_PORT: "6379"
           REDIS_URL: "redis://engine-redis:6379"
-          EMBEDDING_MODEL_NAME: "jinaai/jina-embeddings-v3"
+          OPOL_MODE: "container"
         networks:
           - opol-app-stack
     version: "1.0.0"

@@ -16,7 +16,7 @@ logfire
 logfire[asyncpg]
 prefect-docker
 prefect-kubernetes
-opol
+opol >= 0.1.61
 google-generativeai
 instructor
 prettyprint
