@@ -7,6 +7,8 @@ from core.service_mapping import ServiceConfig
 from core.utils import logger
 from prefect.deployments import run_deployment
 
+## DEPRECATED SERVICE
+
 async def lifespan(app):
     yield
 
