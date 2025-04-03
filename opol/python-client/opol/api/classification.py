@@ -10,7 +10,7 @@ class Classification(BaseClient):
             api_key: str = None, 
             timeout: int = 60, 
             provider: str = "Google", 
-            model_name: str = "models/gemini-2.0-flash-exp", 
+            model_name: str = "models/gemini-2.0-flash", 
             llm_api_key: str = None):
         
         super().__init__(

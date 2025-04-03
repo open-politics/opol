@@ -15,7 +15,7 @@ BUILTIN_TYPES: Dict[str, Any] = {
 }
 
 provider_model_map = {
-    "google": "gemini-2.0-flash-exp",
+    "google": "gemini-2.0-flash",
     "ollama": "llama3.2:latest",
     "groq": "llama3.2:latest",
 }
@@ -28,7 +28,7 @@ class FastClass:
     It can accept either a string-based type definition or a full Pydantic model.
     """
 
-    def __init__(self, provider: str = "Google", model_name: str = "models/gemini-2.0-flash-exp", llm_api_key: str = None):
+    def __init__(self, provider: str = "Google", model_name: str = "models/gemini-2.0-flash", llm_api_key: str = None):
         # Initialize LLM client
         self.provider = provider.lower()
         self.model_name = model_name
