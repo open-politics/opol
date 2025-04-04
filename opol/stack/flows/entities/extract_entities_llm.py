@@ -64,12 +64,19 @@ class EntityExtractor:
     def load_fastclass():
         # Simplified initialization
         try:
-            provider = "ollama" if os.environ.get("LOCAL_LLM") == "True" else os.environ.get("LLM_PROVIDER", "Google")
-            return opol.classification(
-                provider=provider,
-                model_name=os.environ.get("LOCAL_LLM_MODEL") if provider == "ollama" else os.environ.get("LLM_MODEL"),
-                llm_api_key="" if provider == "ollama" else os.environ.get("GOOGLE_API_KEY", "")
-            )
+            if os.environ["LOCAL_LLM"] == "True":
+                xclass = opol.classification(
+                    provider="ollama", 
+                    model_name=os.environ.get("LOCAL_LLM_MODEL", "llama3.2:latest"), 
+                    llm_api_key=""
+                )
+            else:
+                xclass = opol.classification(
+                    provider=os.environ.get("LLM_PROVIDER", "Google"), 
+                    model_name=os.environ.get("LLM_MODEL", "models/gemini-2.0-flash"), 
+                    llm_api_key=os.environ.get("GOOGLE_API_KEY", "")
+                )
+            return xclass
         except Exception as e:
             logger.error(f"Classification service init failed: {e}")
             raise
@@ -164,7 +171,7 @@ def push_entities(contents_with_entities: List[Tuple[Content, List[Tuple[str, st
         logger.error(f"Redis error while pushing entities: {e}")
 
 @flow(log_prints=True)
-def extract_entities_flow(batch_size: int = 2):
+def extract_entities_flow(batch_size: int = 20):
     contents = retrieve_contents(batch_size=batch_size)
 
     if not contents:
@@ -175,4 +182,4 @@ def extract_entities_flow(batch_size: int = 2):
     push_entities(processed_contents)
 
 if __name__ == "__main__":
-    extract_entities_flow(1)
+    extract_entities_flow(20)
