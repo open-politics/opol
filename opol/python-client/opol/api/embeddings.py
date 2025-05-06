@@ -71,6 +71,11 @@ class Embeddings(BaseClient):
             
             response = self.post(endpoint, json=data, override_base_url=base_url, override_headers=headers)
             embedding = response['data'][0]['embedding']
+            # If the input was a single string and Jina returns a list containing the actual embedding vector,
+            # unwrap it to ensure a 1D vector is returned.
+            if isinstance(text, str) and isinstance(embedding, list) and len(embedding) == 1 \
+               and isinstance(embedding[0], list):
+                return embedding[0]
             return embedding
         else:
             # Use the local model on the service-embeddings on port 420
