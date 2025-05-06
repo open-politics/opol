@@ -49,6 +49,8 @@ class Embeddings(BaseClient):
         Returns:
             dict: The embeddings for the text.
         """
+        original_text_is_str = isinstance(text, str)
+
         if self.use_api and self.api_provider:
             # Use the specified API provider
             if self.api_provider == "jina":
@@ -60,7 +62,7 @@ class Embeddings(BaseClient):
                     "late_chunking": False,
                     "dimensions": 1024,
                     "embedding_type": "float",
-                    "input": [text] if isinstance(text, str) else text
+                    "input": [text] if original_text_is_str else text
                 }
                 headers = {
                     "Content-Type": "application/json",
@@ -70,18 +72,15 @@ class Embeddings(BaseClient):
                 raise ValueError(f"Unsupported API provider: {self.api_provider}")
             
             response = self.post(endpoint, json=data, override_base_url=base_url, override_headers=headers)
-            embedding = response['data'][0]['embedding']
-            # If the input was a single string and Jina returns a list containing the actual embedding vector,
-            # unwrap it to ensure a 1D vector is returned.
-            if isinstance(text, str) and isinstance(embedding, list) and len(embedding) == 1 \
-               and isinstance(embedding[0], list):
-                return embedding[0]
-            return embedding
+            embedding_result = response['data'][0]['embedding']
+            if original_text_is_str and isinstance(embedding_result, list) and len(embedding_result) == 1 \
+               and isinstance(embedding_result[0], list):
+                return embedding_result[0]
+            return embedding_result
         else:
             # Use the local model on the service-embeddings on port 420
             endpoint = "/embeddings"
-            if isinstance(text, str):
-                text = [text] 
+            current_texts = [text] if original_text_is_str else text
             try:
                 embedding_type_enum = EmbeddingTypes(embedding_type)
             except ValueError:
@@ -89,12 +88,15 @@ class Embeddings(BaseClient):
 
             params = {
                 "embedding_type": embedding_type_enum.value,
-                "texts": text  
+                "texts": current_texts
             }
-            response = self.post(endpoint, json=params)
-            embeddings = response.get("embeddings", [])
+            response_json = self.post(endpoint, json=params)
+            embeddings_list = response_json.get("embeddings", [])
         
-        return embeddings
+            if original_text_is_str and isinstance(embeddings_list, list) and len(embeddings_list) == 1 \
+               and isinstance(embeddings_list[0], list):
+                return embeddings_list[0]
+            return embeddings_list
     
     def cosine(self, a, b):
         # Debugging statements to check input shapes and types
